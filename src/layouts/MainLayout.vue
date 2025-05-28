@@ -4,48 +4,49 @@
 
 <template>
   <v-app-bar title="Химникель ERP">
-    <v-toolbar app color="primary" dark>
-      <!-- Логотип и название -->
-      <v-btn icon class="mr-2">
-        <v-icon>mdi-alpha-m-box</v-icon>
-      </v-btn>
-      <v-toolbar-title>MyApp</v-toolbar-title>
+    <!-- Логотип и название -->
+    <v-btn icon class="mr-2">
+      <v-icon>mdi-alpha-m-box</v-icon>
+    </v-btn>
 
-      <!-- Поиск -->
-      <v-text-field
-        flat
-        hide-details
-        prepend-inner-icon="mdi-magnify"
-        label="Search"
-        single-line
-        dense
-        class="mx-5"
-      />
+    <!-- Поиск -->
+    <v-text-field
+      flat
+      hide-details
+      prepend-inner-icon="mdi-magnify"
+      label="Search"
+      single-line
+      dense
+      class="mx-5"
+    />
 
-      <!-- Навигационные кнопки -->
-      <v-btn text> Dashboard </v-btn>
-      <v-btn text> Projects </v-btn>
-      <v-btn text> Team </v-btn>
+    <!-- Навигационные кнопки -->
+    <v-btn text> Dashboard </v-btn>
+    <v-btn text> Projects </v-btn>
+    <v-btn text> Team </v-btn>
 
-      <v-spacer />
+    <v-spacer />
 
-      <!-- Кнопка настроек -->
-      <v-btn icon>
-        <v-icon>mdi-cog</v-icon>
-      </v-btn>
+    <!-- Кнопка настроек -->
+    <v-btn icon>
+      <v-icon>mdi-cog</v-icon>
+    </v-btn>
 
-      <!-- Информация о пользователе -->
-      <v-avatar size="32" class="ml-4">
-        <img src="https://randomuser.me/api/portraits/men/85.jpg" alt="User" />
-      </v-avatar>
+    <!-- Информация о пользователе -->
+    <v-avatar size="32" class="ml-4">
+      <img src="https://randomuser.me/api/portraits/men/85.jpg" alt="User" />
+    </v-avatar>
 
-      <v-btn text class="ml-2"> Logout </v-btn>
-    </v-toolbar>
+    <v-btn text class="ml-2"> Logout </v-btn>
   </v-app-bar>
 
   <v-navigation-drawer>
+    <v-list-item title="My Application" subtitle="Vuetify"></v-list-item>
+    <v-divider></v-divider>
     <v-list>
-      <v-list-item title="Navigation drawer"></v-list-item>
+      <v-list-item active title="Заказчики"></v-list-item>
+      <v-list-item title="Заказы"></v-list-item>
+      <v-list-item title="Рабочие"></v-list-item>
     </v-list>
   </v-navigation-drawer>
 
@@ -81,7 +82,6 @@
 
 <style scoped>
 header {
-  height: 36px;
   display: flex;
   justify-content: space-between;
   align-items: center;

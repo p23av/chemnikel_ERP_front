@@ -1,8 +1,7 @@
 <template>
   <div class="manager-dashboard">
     <header class="dashboard-header">
-      <h1>Панель управления менеджера</h1>
-      <button @click="handleLogout" class="logout-btn">Выйти</button>
+      <h2>Панель управления менеджера</h2>
     </header>
 
     <div class="content-section">
