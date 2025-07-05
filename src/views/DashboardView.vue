@@ -173,12 +173,6 @@ const deleteCustomer = async (id) => {
   }
 }
 
-// Выход из системы
-const handleLogout = () => {
-  authStore.logout()
-  router.push('/login')
-}
-
 // Загружаем данные при монтировании компонента
 onMounted(() => {
   fetchCustomers()

@@ -1,9 +1,10 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
 import LoginView from '@/views/LoginView.vue'
-import ManagerDashboard from '@/views/ManagerDashboardView.vue'
+import Dashboard from '@/views/DashboardView.vue'
 
-import { useAuthStore } from '@/stores/auth'
+// import { useAuthStore } from '@/stores/auth'
+// const store = useAuthStore
 
 const routes = [
   { path: '/', redirect: '/login' },
@@ -17,14 +18,23 @@ const routes = [
     },
   },
   {
-    path: '/manager',
-    name: 'Manager',
-    component: ManagerDashboard,
+    path: '/dashboard',
+    name: 'Dashboard',
+    component: Dashboard,
     meta: {
       layout: 'MainLayout',
       requiresAuth: true,
     },
   },
+  // {
+  //   path: '/config',
+  //   name: 'Config',
+  //   component: Config,
+  //   meta: {
+  //     layout: 'MainLayout',
+  //     requiresAuth: true,
+  //   },
+  // },
 ]
 
 const router = createRouter({
@@ -40,11 +50,11 @@ router.beforeEach(async (to) => {
     if (!token) return '/login'
 
     try {
-      await fetch('/api/user/me/', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      })
+      // await fetch('/api/users/me/', {
+      //   headers: {
+      //     Authorization: `Bearer ${token}`,
+      //   },
+      // })
       return true
     } catch {
       return '/login'

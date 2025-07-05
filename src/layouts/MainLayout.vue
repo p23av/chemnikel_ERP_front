@@ -1,5 +1,13 @@
 <script setup lang="ts">
-// import router from '../router'
+import router from '@/router'
+import { useAuthStore } from '@/stores/auth'
+const authStore = useAuthStore()
+
+// Выход из системы
+const handleLogout = () => {
+  authStore.logout()
+  router.push('/login')
+}
 </script>
 
 <template>
@@ -22,8 +30,7 @@
 
     <!-- Навигационные кнопки -->
     <v-btn text> Dashboard </v-btn>
-    <v-btn text> Projects </v-btn>
-    <v-btn text> Team </v-btn>
+    <v-btn text> Config </v-btn>
 
     <v-spacer />
 
@@ -37,7 +44,7 @@
       <img src="https://randomuser.me/api/portraits/men/85.jpg" alt="User" />
     </v-avatar>
 
-    <v-btn text class="ml-2"> Logout </v-btn>
+    <v-btn @click="handleLogout" text class="ml-2"> Logout </v-btn>
   </v-app-bar>
 
   <v-navigation-drawer>
@@ -45,8 +52,8 @@
     <v-divider></v-divider>
     <v-list>
       <v-list-item active title="Заказчики"></v-list-item>
-      <v-list-item title="Заказы"></v-list-item>
-      <v-list-item title="Рабочие"></v-list-item>
+      <!-- <v-list-item title="Заказы"></v-list-item> -->
+      <v-list-item title="Сотрудники"></v-list-item>
     </v-list>
   </v-navigation-drawer>
 

@@ -31,7 +31,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { useAuthStore } from '../stores/auth'
+import { useAuthStore } from '@/stores/auth'
 
 const username = ref('')
 const password = ref('')
@@ -43,7 +43,8 @@ const handleLogin = async () => {
   try {
     errorMessage.value = ''
     await authStore.login(username.value, password.value)
-    router.push('/manager')
+    await authStore.me()
+    router.push('/dashboard')
   } catch (error) {
     errorMessage.value = 'Неверный логин или пароль'
     console.error('Ошибка авторизации:', error)
