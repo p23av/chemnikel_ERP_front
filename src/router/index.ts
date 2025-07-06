@@ -1,7 +1,9 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
-import LoginView from '@/views/LoginView.vue'
-import Dashboard from '@/views/DashboardView.vue'
+import LoginView  from '@/views/LoginView.vue'
+import Dashboard  from '@/views/DashboardView.vue'
+import Customers  from '@/views/CustomersView.vue'
+import Workers    from '@/views/WorkersView.vue'
 
 // import { useAuthStore } from '@/stores/auth'
 // const store = useAuthStore
@@ -21,6 +23,33 @@ const routes = [
     path: '/dashboard',
     name: 'Dashboard',
     component: Dashboard,
+    meta: {
+      layout: 'MainLayout',
+      requiresAuth: true,
+    },
+  },
+  // {
+  //   path: '/dashboard',
+  //   name: 'Dashboard',
+  //   component: Dashboard,
+  //   meta: {
+  //     layout: 'MainLayout',
+  //     requiresAuth: true,
+  //   },
+  // },
+  {
+    path: '/customers',
+    name: 'Customers',
+    component: Customers,
+    meta: {
+      layout: 'MainLayout',
+      requiresAuth: true,
+    },
+  },
+  {
+    path: '/workers',
+    name: 'Workers',
+    component: Workers,
     meta: {
       layout: 'MainLayout',
       requiresAuth: true,

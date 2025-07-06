@@ -1,7 +1,7 @@
 <template>
   <div class="manager-dashboard">
     <header class="dashboard-header">
-      <h2>Панель управления менеджера</h2>
+      <h2>Customers</h2>
     </header>
 
     <div class="content-section">
@@ -89,14 +89,7 @@ const router = useRouter()
 const authStore = useAuthStore()
 
 // Состояния для данных
-interface Customer {
-  id: number;
-  name: string;
-  contact_person: string;
-  phone: string;
-  email: string;
-}
-const customers = ref<Customer[]>([])
+const customers = ref([])
 const isLoading = ref(false)
 const error = ref(null)
 const showAddForm = ref(false)

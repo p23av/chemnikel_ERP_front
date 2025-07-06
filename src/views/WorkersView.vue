@@ -1,12 +1,12 @@
 <template>
   <div class="manager-dashboard">
     <header class="dashboard-header">
-      <h2>Панель управления менеджера</h2>
+      <h2>Workers</h2>
     </header>
 
     <div class="content-section">
       <div class="section-header">
-        <h2>Список заказчиков</h2>
+        <h2>Список сотрудников</h2>
         <button @click="fetchCustomers" class="refresh-btn">Обновить список</button>
       </div>
 
@@ -15,7 +15,7 @@
       <div v-else-if="error" class="error-message">Ошибка при загрузке данных: {{ error }}</div>
 
       <div v-else>
-        <v-table class="customers-table" height="300px" fixed-header>
+        <v-table class="workers-table" height="300px" fixed-header>
           <thead>
             <tr>
               <th class="text-left">ID</th>
@@ -27,12 +27,11 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="customer in customers" :key="customer.id">
-              <td>{{ customer.id }}</td>
-              <td>{{ customer.name }}</td>
-              <td>{{ customer.contact_person }}</td>
-              <td>{{ customer.phone }}</td>
-              <td>{{ customer.email }}</td>
+            <tr v-for="user in users" :key="user.id">
+              <td>{{ user.id }}</td>
+              <td>{{ user.full_name }}</td>
+              <td>{{ user.role }}</td>
+              <td>{{ user.is_active }}</td>
               <td>
                 <button @click="editCustomer(customer.id)" class="action-btn edit-btn">
                   Редактировать
@@ -89,14 +88,15 @@ const router = useRouter()
 const authStore = useAuthStore()
 
 // Состояния для данных
-interface Customer {
-  id: number;
-  name: string;
-  contact_person: string;
-  phone: string;
-  email: string;
+interface User {
+  "id": number;
+  "username": string;
+  "email": string;
+  "full_name": string;
+  "role": string;
+  "is_active": boolean;
 }
-const customers = ref<Customer[]>([])
+const users = ref<User[]>([])
 const isLoading = ref(false)
 const error = ref(null)
 const showAddForm = ref(false)
@@ -110,11 +110,11 @@ const newCustomer = ref({
 })
 
 // Загрузка списка заказчиков
-const fetchCustomers = async () => {
+const fetchUsers = async () => {
   try {
     isLoading.value = true
     error.value = null
-    customers.value = await ofetch('/api/customers/', {
+    users.value = await ofetch('/api/users/', {
       baseURL: 'http://localhost:8000',
       headers: {
         Authorization: `Bearer ${authStore.accessToken}`,
@@ -134,55 +134,55 @@ const fetchCustomers = async () => {
 }
 
 // Добавление нового заказчика
-const addCustomer = async () => {
-  try {
-    const createdCustomer = await ofetch('/api/customers/', {
-      method: 'POST',
-      body: newCustomer.value,
-      baseURL: 'http://localhost:8000',
-      headers: {
-        Authorization: `Bearer ${authStore.accessToken}`,
-        'Content-Type': 'application/json',
-      },
-    })
+// const addCustomer = async () => {
+//   try {
+//     const createdCustomer = await ofetch('/api/customers/', {
+//       method: 'POST',
+//       body: newCustomer.value,
+//       baseURL: 'http://localhost:8000',
+//       headers: {
+//         Authorization: `Bearer ${authStore.accessToken}`,
+//         'Content-Type': 'application/json',
+//       },
+//     })
 
-    customers.value.push(createdCustomer)
-    showAddForm.value = false
-    newCustomer.value = { name: '', contact_person: '', phone: '', email: '' }
-  } catch (err) {
-    error.value = err.message || 'Не удалось добавить заказчика'
-    console.error('Ошибка при добавлении заказчика:', err)
-  }
-}
+//     customers.value.push(createdCustomer)
+//     showAddForm.value = false
+//     newCustomer.value = { name: '', contact_person: '', phone: '', email: '' }
+//   } catch (err) {
+//     error.value = err.message || 'Не удалось добавить заказчика'
+//     console.error('Ошибка при добавлении заказчика:', err)
+//   }
+// }
 
 // Редактирование заказчика
-const editCustomer = (id) => {
-  router.push(`/customers/${id}/edit`)
-}
+// const editCustomer = (id) => {
+//   router.push(`/customers/${id}/edit`)
+// }
 
 // Удаление заказчика
-const deleteCustomer = async (id) => {
-  if (!confirm('Вы уверены, что хотите удалить этого заказчика?')) return
+// const deleteCustomer = async (id) => {
+//   if (!confirm('Вы уверены, что хотите удалить этого заказчика?')) return
 
-  try {
-    await ofetch(`/api/customers/${id}/`, {
-      method: 'DELETE',
-      baseURL: 'http://localhost:8000',
-      headers: {
-        Authorization: `Bearer ${authStore.accessToken}`,
-      },
-    })
+//   try {
+//     await ofetch(`/api/customers/${id}/`, {
+//       method: 'DELETE',
+//       baseURL: 'http://localhost:8000',
+//       headers: {
+//         Authorization: `Bearer ${authStore.accessToken}`,
+//       },
+//     })
 
-    customers.value = customers.value.filter((c) => c.id !== id)
-  } catch (err) {
-    error.value = err.message || 'Не удалось удалить заказчика'
-    console.error('Ошибка при удалении заказчика:', err)
-  }
-}
+//     customers.value = customers.value.filter((c) => c.id !== id)
+//   } catch (err) {
+//     error.value = err.message || 'Не удалось удалить заказчика'
+//     console.error('Ошибка при удалении заказчика:', err)
+//   }
+// }
 
 // Загружаем данные при монтировании компонента
 onMounted(() => {
-  fetchCustomers()
+  fetchUsers()
 })
 </script>
 

@@ -8,9 +8,43 @@ const handleLogout = () => {
   authStore.logout()
   router.push('/login')
 }
+
+interface NavItem {
+  title: string
+  icon: string
+  value: string
+  to: string
+}
+const navItems: NavItem[] = [
+  { title: 'Dashboard', icon: 'mdi-view-dashboard', value: 'dashboard', to: '/dashboard' },
+  { title: 'Customers', icon: 'mdi-folder', value: 'customers', to: '/customers' },
+  { title: 'Projects', icon: 'mdi-folder', value: 'projects', to: '/projects' },
+  { title: 'Team', icon: 'mdi-account-group', value: 'workers', to: '/workers' },
+  { title: 'Calendar', icon: 'mdi-calendar', value: 'calendar', to: '/calendar' },
+]
 </script>
 
 <template>
+
+  <v-navigation-drawer>
+    <v-list-item title="Химникель ERP"></v-list-item>
+    <v-divider></v-divider>
+    <v-list nav>
+      <v-list-item
+        v-for="item in navItems"
+        :key="item.title"
+        :title="item.title"
+        :value="item.value"
+        :to="item.to"
+        active-color="primary"
+      />
+      <!-- <v-list-item title="Dashboard" value="dashboard"></v-list-item>
+      <v-list-item active title="Customers" value="customers"></v-list-item>
+      <v-list-item title="Human resource" value="workers"></v-list-item>
+      <v-list-item title="About" value="about"></v-list-item> -->
+    </v-list>
+  </v-navigation-drawer>
+
   <v-app-bar title="Химникель ERP">
     <!-- Логотип и название -->
     <v-btn icon class="mr-2">
@@ -29,8 +63,8 @@ const handleLogout = () => {
     />
 
     <!-- Навигационные кнопки -->
-    <v-btn text> Dashboard </v-btn>
-    <v-btn text> Config </v-btn>
+    <!-- <v-btn text> Dashboard </v-btn>
+    <v-btn text> Config </v-btn> -->
 
     <v-spacer />
 
@@ -46,16 +80,6 @@ const handleLogout = () => {
 
     <v-btn @click="handleLogout" text class="ml-2"> Logout </v-btn>
   </v-app-bar>
-
-  <v-navigation-drawer>
-    <v-list-item title="My Application" subtitle="Vuetify"></v-list-item>
-    <v-divider></v-divider>
-    <v-list>
-      <v-list-item active title="Заказчики"></v-list-item>
-      <!-- <v-list-item title="Заказы"></v-list-item> -->
-      <v-list-item title="Сотрудники"></v-list-item>
-    </v-list>
-  </v-navigation-drawer>
 
   <v-main>
     <slot></slot>
