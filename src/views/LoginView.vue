@@ -36,17 +36,23 @@ import { useAuthStore } from '@/stores/auth'
 const username = ref('')
 const password = ref('')
 const errorMessage = ref('')
+
 const router = useRouter()
 const authStore = useAuthStore()
 
 const handleLogin = async () => {
+  errorMessage.value = ''
+
   try {
-    errorMessage.value = ''
     await authStore.login(username.value, password.value)
-    await authStore.me()
-    router.push('/dashboard')
-  } catch (error) {
-    errorMessage.value = 'Неверный логин или пароль'
+    await authStore.fetchUser()
+    await router.push('/dashboard')
+  } catch (error: any) {
+    if (error?.status === 401 || error?.message === 'Invalid credentials') {
+      errorMessage.value = 'Неверный логин или пароль'
+    } else {
+      console.error('Ошибка входа. Попробуйте позже.')
+    }
     console.error('Ошибка авторизации:', error)
   }
 }

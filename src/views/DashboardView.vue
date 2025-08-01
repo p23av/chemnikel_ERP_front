@@ -83,25 +83,26 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { ofetch } from 'ofetch'
+import api from '@/plugins/ofetch'
 
 const router = useRouter()
 const authStore = useAuthStore()
 
-// Состояния для данных
+// Интерфейс заказчика
 interface Customer {
-  id: number;
-  name: string;
-  contact_person: string;
-  phone: string;
-  email: string;
+  id: number
+  name: string
+  contact_person: string
+  phone: string
+  email: string
 }
 const customers = ref<Customer[]>([])
 const isLoading = ref(false)
-const error = ref(null)
+const error = ref<string | null>(null)
 const showAddForm = ref(false)
 
 // Данные для нового заказчика
+// todo: добавить метод сброса значений
 const newCustomer = ref({
   name: '',
   contact_person: '',
@@ -114,20 +115,11 @@ const fetchCustomers = async () => {
   try {
     isLoading.value = true
     error.value = null
-    customers.value = await ofetch('/api/customers/', {
-      baseURL: 'http://localhost:8000',
-      headers: {
-        Authorization: `Bearer ${authStore.accessToken}`,
-      },
-    })
+
+    customers.value = await api('/customers/')
   } catch (err) {
     error.value = err.message || 'Не удалось загрузить список заказчиков'
-    console.error('Ошибка при загрузке заказчиков:', err)
-
-    // Если ошибка 401 (не авторизован), перенаправляем на страницу входа
-    if (err.status === 401) {
-      router.push('/login')
-    }
+    throw err
   } finally {
     isLoading.value = false
   }
@@ -136,14 +128,9 @@ const fetchCustomers = async () => {
 // Добавление нового заказчика
 const addCustomer = async () => {
   try {
-    const createdCustomer = await ofetch('/api/customers/', {
+    const createdCustomer = await api('/customers/', {
       method: 'POST',
       body: newCustomer.value,
-      baseURL: 'http://localhost:8000',
-      headers: {
-        Authorization: `Bearer ${authStore.accessToken}`,
-        'Content-Type': 'application/json',
-      },
     })
 
     customers.value.push(createdCustomer)
@@ -165,12 +152,8 @@ const deleteCustomer = async (id) => {
   if (!confirm('Вы уверены, что хотите удалить этого заказчика?')) return
 
   try {
-    await ofetch(`/api/customers/${id}/`, {
+    await api(`/customers/${id}/`, {
       method: 'DELETE',
-      baseURL: 'http://localhost:8000',
-      headers: {
-        Authorization: `Bearer ${authStore.accessToken}`,
-      },
     })
 
     customers.value = customers.value.filter((c) => c.id !== id)
@@ -181,8 +164,14 @@ const deleteCustomer = async (id) => {
 }
 
 // Загружаем данные при монтировании компонента
-onMounted(() => {
-  fetchCustomers()
+onMounted(async () => {
+  try {
+    await fetchCustomers()
+  } catch (err: any) {
+    if (err?.status === 401) {
+      router.push('/login')
+    }
+  }
 })
 </script>
 

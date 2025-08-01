@@ -89,12 +89,12 @@ const authStore = useAuthStore()
 
 // Состояния для данных
 interface User {
-  "id": number;
-  "username": string;
-  "email": string;
-  "full_name": string;
-  "role": string;
-  "is_active": boolean;
+  id: number
+  username: string
+  email: string
+  full_name: string
+  role: string
+  is_active: boolean
 }
 const users = ref<User[]>([])
 const isLoading = ref(false)
@@ -115,7 +115,6 @@ const fetchUsers = async () => {
     isLoading.value = true
     error.value = null
     users.value = await ofetch('/api/users/', {
-      baseURL: 'http://localhost:8000',
       headers: {
         Authorization: `Bearer ${authStore.accessToken}`,
       },
