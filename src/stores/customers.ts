@@ -1,11 +1,13 @@
 import { defineStore } from 'pinia'
-import { ofetch } from 'ofetch'
+// import { ofetch } from 'ofetch'
+import api from '@/plugins/ofetch'
 
 // Типы данных
 export interface Customer {
   id: number
   name: string
   tax_id: string
+  contact_person: string
   email: string
   phone: string
   is_active: boolean
@@ -20,32 +22,7 @@ interface CustomersState {
 
 export const useCustomersStore = defineStore('customers', {
   state: (): CustomersState => ({
-    customers: [
-      {
-        id: 4,
-        name: 'ООО "ИСС"',
-        tax_id: '987654321098',
-        email: 'smirnov@mail.ru',
-        phone: '+79161234567',
-        is_active: true,
-      },
-      {
-        id: 2,
-        name: 'ООО "ХОЛИНДЕН"',
-        tax_id: '987654321098',
-        email: 'smirnov@mail.ru',
-        phone: '+79161234567',
-        is_active: true,
-      },
-      {
-        id: 3,
-        name: 'ООО Ромашка',
-        tax_id: '123456789012',
-        email: 'contact@romashka.ru',
-        phone: '+74951234567',
-        is_active: false,
-      },
-    ],
+    customers: [],
     currentCustomer: null,
     isLoading: false,
     error: null,
@@ -67,18 +44,15 @@ export const useCustomersStore = defineStore('customers', {
       this.error = null
 
       try {
-        const response = await ofetch<Customer[]>('/api/customers/', {
-          method: 'GET',
-          baseURL: 'http://localhost:8000',
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem('access_token')}`,
-          },
-        })
-        this.customers.push(...response)
-        // this.customers = response
-      } catch (err: any) {
-        this.error = err.message || 'Ошибка загрузки данных'
-        console.error('Failed to fetch customers:', err)
+        const response = await api('/customers')
+        this.customers = response
+      } catch (err) {
+        if (err instanceof Error) {
+          this.error = err.message || 'Ошибка загрузки данных'
+          console.error('Failed to fetch customers:', err)
+        } else {
+          console.log('Неизвестная ошибка:', err)
+        }
       } finally {
         this.isLoading = false
       }
@@ -86,55 +60,94 @@ export const useCustomersStore = defineStore('customers', {
 
     async addCustomer(customerData: Omit<Customer, 'id'>): Promise<Customer> {
       try {
-        const newCustomer = await ofetch<Customer>('/api/customers/', {
+        // Используем api плагин - заголовки добавятся автоматически
+        const newCustomer = await api<Customer>('/customers/', {
           method: 'POST',
           body: customerData,
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${localStorage.getItem('access_token')}`,
-          },
         })
 
         this.customers.push(newCustomer)
         return newCustomer
-      } catch (err: any) {
-        throw new Error(err.message || 'Ошибка создания')
+      } catch (err) {
+        if (err instanceof Error) {
+          throw new Error(err.message || 'Ошибка создания')
+        } else {
+          throw new Error('Ошибка создания клиента')
+        }
       }
     },
 
     async updateCustomer(id: number, updatedData: Partial<Customer>): Promise<Customer> {
       try {
-        const updatedCustomer = await ofetch<Customer>(`/api/customers/${id}/`, {
+        const updatedCustomer = await api(`/customers/${id}/`, {
           method: 'PATCH',
           body: updatedData,
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem('access_token')}`,
-          },
         })
 
         const index = this.customers.findIndex((c) => c.id === id)
         if (index !== -1) {
-          this.customers[index] = updatedCustomer
+          this.customers[index] = { ...this.customers[index], ...updatedCustomer }
+        }
+
+        // Обновляем currentCustomer если он редактируется
+        if (this.currentCustomer?.id === id) {
+          this.currentCustomer = { ...this.currentCustomer, ...updatedCustomer }
         }
         return updatedCustomer
-      } catch (err: any) {
-        throw new Error(err.message || 'Ошибка обновления')
+      } catch (err: unknown) {
+        if (err instanceof Error) {
+          throw new Error(err.message || 'Ошибка обновления клиента')
+        }
+        throw new Error('Ошибка обновления клиента')
       }
     },
 
     async deleteCustomer(id: number): Promise<void> {
       try {
-        await ofetch(`/api/customers/${id}/`, {
+        await api(`/customers/${id}/`, {
           method: 'DELETE',
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem('access_token')}`,
-          },
         })
 
-        this.customers = this.customers.filter((c) => c.id !== id)
-      } catch (err: any) {
-        throw new Error(err.message || 'Ошибка удаления')
+        // this.customers = this.customers.filter((c) => c.id !== id)
+        await this.fetchCustomers()
+        // Сбрасываем currentCustomer если удаляем текущего
+        if (this.currentCustomer?.id === id) {
+          this.currentCustomer = null
+        }
+      } catch (err: unknown) {
+        if (err instanceof Error) {
+          throw new Error(err.message || 'Ошибка удаления клиента')
+        }
+        throw new Error('Ошибка удаления клиента')
       }
+    },
+
+    // Дополнительные методы для работы с текущим клиентом
+    async fetchCustomerById(id: number): Promise<void> {
+      try {
+        this.isLoading = true
+        this.error = null
+
+        const customer = await api<Customer>(`/customers/${id}/`)
+        this.currentCustomer = customer
+      } catch (err: unknown) {
+        if (err instanceof Error) {
+          this.error = err.message
+        } else {
+          this.error = 'Ошибка загрузки данных клиента'
+        }
+        throw err // пробрасываем ошибку дальше
+      } finally {
+        this.isLoading = false
+      }
+    },
+
+    clearCurrentCustomer(): void {
+      this.currentCustomer = null
+    },
+
+    clearError(): void {
+      this.error = null
     },
   },
 })

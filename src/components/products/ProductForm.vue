@@ -1,160 +1,384 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
-import type { Product, Customer } from '@/stores/customers'
-import { defineProps, defineEmits } from 'vue'
+import { ref, watch, defineEmits, defineProps } from 'vue'
 
-// Props
+interface Product {
+  id: number
+  name: string
+  material: string
+  surface_area: number
+  coating_data: { [key: string]: string } // Формат: { "0": "6", "1": "3" }
+  customer: number
+  is_active?: boolean
+}
+
+// Справочник материалов покрытий
+const coatingMaterials = [
+  { id: '0', name: 'никель', code: 'Н' },
+  { id: '1', name: 'медь', code: 'М' },
+  { id: '2', name: 'олово-висмут', code: 'О-Ви' },
+]
+
 const props = defineProps<{
-  product?: Product
-  customers: Customer[]
-  selectedCustomerId: string | null
+  modelValue: boolean
+  product?: Product | null
+  customers: { id: number; name: string }[]
 }>()
 
-// Emits
 const emit = defineEmits<{
-  (e: 'save', product: Omit<Product, 'id'>): void
-  (e: 'cancel'): void
+  (e: 'update:modelValue', value: boolean): void
+  (e: 'save', payload: Omit<Product, 'id'> | Product): void
 }>()
 
-// Reactive fields
-const name = ref(props.product?.name || '')
-const description = ref(props.product?.description || '')
-const price = ref(props.product?.price != null ? props.product.price.toString() : '')
-const customerId = ref(props.product?.customerId || props.selectedCustomerId || '')
-const tags = ref<string[]>([...(props.product?.tags || [])])
-const tagInput = ref('')
+const formData = ref<Omit<Product, 'id'>>({
+  name: '',
+  material: '',
+  surface_area: 0,
+  coating_data: {},
+  customer: 0,
+})
 
-// Watch for prop changes (edit mode)
+// Преобразуем coating_data в массив для удобства работы в форме
+const coatingLayers = ref<Array<{ materialId: string; thickness: string }>>([])
+
 watch(
   () => props.product,
   (newProduct) => {
-    name.value = newProduct?.name || ''
-    description.value = newProduct?.description || ''
-    price.value = newProduct?.price != null ? newProduct.price.toString() : ''
-    customerId.value = newProduct?.customerId || props.selectedCustomerId || ''
-    tags.value = [...(newProduct?.tags || [])]
+    if (newProduct) {
+      formData.value = {
+        name: newProduct.name,
+        material: newProduct.material,
+        surface_area: newProduct.surface_area,
+        coating_data: { ...newProduct.coating_data },
+        customer: newProduct.customer,
+      }
+
+      // Преобразуем coating_data в массив для формы
+      coatingLayers.value = Object.entries(newProduct.coating_data || {}).map(
+        ([materialId, thickness]) => ({
+          materialId,
+          thickness: thickness.toString(),
+        }),
+      )
+    } else {
+      formData.value = {
+        name: '',
+        material: '',
+        surface_area: 0,
+        coating_data: {},
+        customer: 0,
+      }
+      coatingLayers.value = []
+    }
   },
+  { immediate: true },
 )
 
-const isEdit = computed(() => !!props.product)
-
-// Methods
-function handleAddTag() {
-  const trimmed = tagInput.value.trim()
-  if (trimmed && !tags.value.includes(trimmed)) {
-    tags.value.push(trimmed)
-    tagInput.value = ''
-  }
+function addCoating() {
+  coatingLayers.value.push({ materialId: '', thickness: '' })
 }
 
-function handleRemoveTag(tagToRemove: string) {
-  tags.value = tags.value.filter((tag) => tag !== tagToRemove)
-}
-
-function handleKeyDown(e: KeyboardEvent) {
-  if (e.key === 'Enter') {
-    e.preventDefault()
-    handleAddTag()
-  }
+function removeCoating(index: number) {
+  coatingLayers.value.splice(index, 1)
 }
 
 function handleSubmit() {
-  // Преобразуем price в число
-  const priceNumber = parseFloat(price.value)
-  if (isNaN(priceNumber) || priceNumber < 0) {
-    // Можно добавить валидацию и показать ошибку
-    return
-  }
-
-  emit('save', {
-    name: name.value,
-    description: description.value,
-    price: priceNumber,
-    customerId: customerId.value,
-    tags: tags.value,
+  // Преобразуем массив слоев в coating_data объект
+  const coatingData: { [key: string]: string } = {}
+  coatingLayers.value.forEach((layer) => {
+    if (layer.materialId && layer.thickness) {
+      // Явно создаем ключ как строку
+      const key = String(layer.materialId)
+      coatingData[key] = layer.thickness
+    }
   })
+
+  // Принудительно сериализуем и парсим чтобы ключи остались строками
+  const serializedData = JSON.stringify({
+    ...formData.value,
+    coating_data: coatingData,
+  })
+
+  const submitData = JSON.parse(serializedData)
+
+  console.log('📤 Отправляем данные:', submitData)
+  console.log(
+    '🔍 coating_data keys types:',
+    Object.keys(submitData.coating_data).map((k) => ({ key: k, type: typeof k })),
+  )
+
+  emit('save', props.product?.id ? { id: props.product.id, ...submitData } : submitData)
+  emit('update:modelValue', false)
+}
+
+function closeModal() {
+  emit('update:modelValue', false)
 }
 </script>
 
 <template>
-  <v-dialog model-value persistent max-width="600">
-    <v-card>
-      <v-card-title class="d-flex justify-space-between align-center">
-        <span class="text-h6">{{ isEdit ? 'Редактировать продукт' : 'Добавить продукт' }}</span>
-        <v-btn icon variant="text" @click="emit('cancel')">
-          <v-icon>mdi-close</v-icon>
-        </v-btn>
-      </v-card-title>
+  <div v-if="modelValue" class="modal-overlay" @click="closeModal">
+    <div class="modal" @click.stop>
+      <h2 class="modal-title">
+        {{ product ? '✏️ Редактировать деталь' : '➕ Добавить деталь' }}
+      </h2>
 
-      <v-card-text>
-        <v-form @submit.prevent="handleSubmit">
-          <v-text-field label="Название продукта" v-model="name" required class="mb-4" />
-          <v-textarea label="Описание" v-model="description" rows="3" class="mb-4" />
-          <v-text-field
-            label="Цена (₽)"
-            v-model="price"
+      <form @submit.prevent="handleSubmit" class="form">
+        <div class="form-group">
+          <label for="name">Название</label>
+          <input
+            id="name"
+            v-model="formData.name"
+            type="text"
+            placeholder="Введите название детали"
+            required
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="material">Материал изделия</label>
+          <input
+            id="material"
+            v-model="formData.material"
+            type="text"
+            placeholder="Введите материал"
+            required
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="surface_area">Площадь поверхности (дм²)</label>
+          <input
+            id="surface_area"
+            v-model.number="formData.surface_area"
             type="number"
             min="0"
             step="0.01"
+            placeholder="0.0"
             required
-            class="mb-4"
           />
-          <v-select
-            label="Заказчик"
-            :items="props.customers"
-            item-title="name"
-            item-value="id"
-            v-model="customerId"
-            required
-            class="mb-4"
-            :menu-props="{ maxHeight: '300px' }"
-          >
-            <template #prepend-item>
-              <v-list-item>
-                <v-list-item-title>Выберите заказчика</v-list-item-title>
-              </v-list-item>
-              <v-divider />
-            </template>
-          </v-select>
+        </div>
 
-          <div class="mb-6">
-            <label class="block text-gray-700 text-sm font-bold mb-2">Теги</label>
-            <div class="flex flex-wrap mb-2">
-              <v-chip
-                v-for="(tag, index) in tags"
-                :key="index"
-                close
-                @click:close="handleRemoveTag(tag)"
-                class="ma-1"
-                color="blue lighten-4"
-                text-color="blue darken-4"
-                small
+        <div class="form-group">
+          <label>Покрытие</label>
+          <div class="coating-section">
+            <div v-for="(layer, index) in coatingLayers" :key="index" class="coating-row">
+              <select v-model="layer.materialId" required>
+                <option disabled value="">Выберите покрытие</option>
+                <option
+                  v-for="material in coatingMaterials"
+                  :key="material.id"
+                  :value="material.id"
+                >
+                  {{ material.name }} ({{ material.code }})
+                </option>
+              </select>
+              <input v-model="layer.thickness" type="text" placeholder="Толщина" required />
+              <button
+                type="button"
+                class="remove-btn"
+                @click="removeCoating(index)"
+                title="Удалить слой"
               >
-                {{ tag }}
-              </v-chip>
+                ❌
+              </button>
             </div>
-            <div class="d-flex">
-              <v-text-field
-                v-model="tagInput"
-                placeholder="Добавить тег"
-                @keydown="handleKeyDown"
-                class="flex-grow-1 mr-2"
-                dense
-                hide-details
-                clearable
-              />
-              <v-btn icon color="primary" @click="handleAddTag" class="mt-2">
-                <v-icon>mdi-plus</v-icon>
-              </v-btn>
-            </div>
+            <button type="button" class="add-btn" @click="addCoating">
+              ➕ Добавить слой покрытия
+            </button>
           </div>
+        </div>
 
-          <div class="d-flex justify-end">
-            <v-btn variant="outlined" class="mr-2" @click="emit('cancel')">Отмена</v-btn>
-            <v-btn color="primary" type="submit">Сохранить</v-btn>
-          </div>
-        </v-form>
-      </v-card-text>
-    </v-card>
-  </v-dialog>
+        <div class="form-group">
+          <label for="customer">Заказчик</label>
+          <select id="customer" v-model="formData.customer" required>
+            <option disabled value="0">Выберите заказчика</option>
+            <option v-for="c in customers" :key="c.id" :value="c.id">
+              {{ c.name }}
+            </option>
+          </select>
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" class="btn save-btn">💾 Сохранить</button>
+          <button type="button" class="btn cancel-btn" @click="closeModal">❌ Отмена</button>
+        </div>
+      </form>
+    </div>
+  </div>
 </template>
+
+<style scoped>
+/* --- Overlay --- */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(30, 41, 59, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+/* --- Modal --- */
+.modal {
+  background: #fff;
+  padding: 2rem;
+  border-radius: 10px;
+  width: 480px;
+  max-width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  animation: fadeIn 0.25s ease;
+}
+
+.modal-title {
+  margin-bottom: 1.25rem;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #1e293b;
+  text-align: center;
+}
+
+/* --- Form --- */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* --- Form groups --- */
+.form-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.form-group label {
+  font-size: 0.9rem;
+  font-weight: 500;
+  margin-bottom: 0.35rem;
+  color: #334155;
+}
+
+.form-group input,
+.form-group select {
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
+  outline: none;
+}
+
+/* --- Coating section --- */
+.coating-section {
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 1rem;
+  background: #f8fafc;
+}
+
+.coating-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.coating-row select {
+  flex: 2;
+}
+
+.coating-row input {
+  flex: 1;
+}
+
+.remove-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: 3px;
+}
+
+.remove-btn:hover {
+  background: #fee2e2;
+}
+
+.add-btn {
+  background: #dbeafe;
+  color: #1e40af;
+  border: 1px dashed #3b82f6;
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+  width: 100%;
+}
+
+.add-btn:hover {
+  background: #c7d2fe;
+}
+
+/* --- Buttons --- */
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.btn {
+  padding: 0.5rem 1rem;
+  font-size: 0.95rem;
+  font-weight: 500;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    transform 0.1s ease;
+}
+
+.btn:active {
+  transform: scale(0.97);
+}
+
+.save-btn {
+  background: #3b82f6;
+  color: #fff;
+}
+
+.save-btn:hover {
+  background: #2563eb;
+}
+
+.cancel-btn {
+  background: #e2e8f0;
+  color: #1e293b;
+}
+
+.cancel-btn:hover {
+  background: #cbd5e1;
+}
+
+/* --- Animations --- */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+</style>

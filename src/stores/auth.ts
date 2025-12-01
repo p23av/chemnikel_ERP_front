@@ -1,12 +1,14 @@
 import { defineStore } from 'pinia'
 import api from '@/plugins/ofetch'
 
-interface User {
+// ЭКСПОРТИРУЕМ тип User
+export interface User {
   id: number
   username: string
   email: string
   full_name: string
-  role: string
+  role: 'owner' | 'manager' | 'worker'
+  is_active: boolean // ← ДОБАВЛЯЕМ is_active
 }
 
 interface AuthState {
@@ -14,6 +16,7 @@ interface AuthState {
   accessToken: string | null
   refreshToken: string | null
   url: string
+  isLoading: boolean
 }
 
 export const useAuthStore = defineStore('auth', {
@@ -22,7 +25,13 @@ export const useAuthStore = defineStore('auth', {
     accessToken: null,
     refreshToken: null,
     url: 'http://api.p23av.ru',
+    isLoading: false,
   }),
+
+  getters: {
+    isAuthenticated: (state) => !!state.user,
+    // Убрал лишние проверки, оставил только базовые
+  },
 
   actions: {
     /**
@@ -31,18 +40,24 @@ export const useAuthStore = defineStore('auth', {
      * @param password
      */
     async login(username: string, password: string) {
-      const data = await api('/auth/token/', {
-        method: 'POST',
-        body: { username, password },
-      })
+      this.isLoading = true
+      try {
+        const data = await api('/auth/token/', {
+          method: 'POST',
+          body: { username, password },
+        })
 
-      this.setTokens(data.access, data.refresh)
+        this.setTokens(data.access, data.refresh)
+        await this.fetchUser() // Сразу загружаем данные пользователя
+      } finally {
+        this.isLoading = false
+      }
     },
 
-    async me() {
-      const data = await api('/users/me/')
-      this.user = data
-    },
+    // async me() {
+    //   const data = await api('/users/me/')
+    //   this.user = data
+    // },
 
     async apiRefreshToken() {
       if (!this.refreshToken) {
@@ -54,26 +69,78 @@ export const useAuthStore = defineStore('auth', {
         throw new Error('No refresh token available')
       }
 
-      const data = await api('/auth/token/refresh/', {
-        method: 'POST',
-        body: { refresh: this.refreshToken },
-      })
+      try {
+        const data = await api('/auth/token/refresh/', {
+          method: 'POST',
+          body: { refresh: this.refreshToken },
+        })
 
-      this.setAccessToken(data.access)
-      return data.access
+        this.setAccessToken(data.access)
+        return data.access
+      } catch (error) {
+        this.logout()
+        throw error
+      }
     },
 
+    /**
+     * Получение данных текущего пользователя
+     */
     async fetchUser() {
-      if (!this.accessToken) return
+      if (!this.accessToken) {
+        throw new Error('No access token')
+      }
 
+      this.isLoading = true
       try {
-        this.user = await api('/users/')
+        // Используем endpoint /users/me/ для получения данных текущего пользователя
+        const userData = await api('/users/me/')
+        console.log('🟢 User data received:', userData)
+
+        // Проверяем что роль есть в ответе
+        if (!userData.role) {
+          console.warn('⚠️ Role not found in user data:', userData)
+        }
+
+        this.user = userData
       } catch (error: any) {
-        // const err = error as { response?: { status?: number } }
+        console.error('❌ Error fetching user:', error)
+
         if (error?.status === 401) {
           try {
             await this.apiRefreshToken()
-            await this.fetchUser()
+            await this.fetchUser() // Повторяем после обновления токена
+          } catch {
+            this.logout()
+            throw error
+          }
+        } else {
+          throw error
+        }
+      } finally {
+        this.isLoading = false
+      }
+    },
+
+    /**
+     * Получение списка всех пользователей (только для менеджеров)
+     */
+    async fetchAllUsers(): Promise<User[]> {
+      if (!this.accessToken) {
+        throw new Error('No access token')
+      }
+
+      try {
+        const users = await api('/users/')
+        console.log('🟢 All users received:', users)
+        return users
+      } catch (error: any) {
+        console.error('❌ Error fetching users:', error)
+
+        if (error?.status === 401) {
+          try {
+            await this.apiRefreshToken()
+            return await this.fetchAllUsers() // Повторяем после обновления токена
           } catch {
             throw error
           }
@@ -83,21 +150,99 @@ export const useAuthStore = defineStore('auth', {
       }
     },
 
-    logout() {
-      api('/users/logout/', {
-        method: 'POST',
-        body: {
-          refresh: this.refreshToken,
-        },
-      }).finally(() => {
+    /**
+     * Создание нового пользователя
+     */
+    async createUser(userData: {
+      username: string
+      full_name: string
+      email: string
+      role: 'owner' | 'manager' | 'worker'
+      password: string
+      is_active?: boolean
+    }): Promise<User> {
+      try {
+        const newUser = await api('/users/create/', {
+          method: 'POST',
+          body: {
+            ...userData,
+            is_active: userData.is_active ?? true, // default true
+          },
+        })
+        console.log('🟢 User created:', newUser)
+        return newUser
+      } catch (error: any) {
+        console.error('❌ Error creating user:', error)
+        throw error
+      }
+    },
+
+    /**
+     * Обновление пользователя
+     */
+    async updateUser(
+      userId: number,
+      updateData: Partial<{
+        username: string
+        full_name: string
+        email: string
+        role: 'owner' | 'manager' | 'worker'
+        is_active: boolean
+        password?: string
+      }>,
+    ): Promise<User> {
+      try {
+        const updatedUser = await api(`/users/${userId}/`, {
+          method: 'PATCH',
+          body: updateData,
+        })
+        console.log('🟢 User updated:', updatedUser)
+        return updatedUser
+      } catch (error: any) {
+        console.error('❌ Error updating user:', error)
+        throw error
+      }
+    },
+
+    /**
+     * Удаление пользователя
+     */
+    async deleteUser(userId: number): Promise<void> {
+      try {
+        await api(`/users/${userId}/`, {
+          method: 'DELETE',
+        })
+        console.log('🟢 User deleted:', userId)
+      } catch (error: any) {
+        console.error('❌ Error deleting user:', error)
+        throw error
+      }
+    },
+
+    async logout() {
+      try {
+        if (this.refreshToken) {
+          await api('/users/logout/', {
+            method: 'POST',
+            body: {
+              refresh: this.refreshToken,
+            },
+          })
+        }
+      } catch (error) {
+        console.error('Logout error:', error)
+      } finally {
         this.user = null
         this.accessToken = null
         this.refreshToken = null
         localStorage.removeItem('access_token')
         localStorage.removeItem('refresh_token')
-      })
+      }
     },
 
+    /**
+     * Восстановление токенов из localStorage
+     */
     restoreToken() {
       const access = localStorage.getItem('access_token')
       const refresh = localStorage.getItem('refresh_token')
@@ -107,6 +252,13 @@ export const useAuthStore = defineStore('auth', {
       }
       if (refresh) {
         this.refreshToken = refresh
+      }
+
+      // Автоматически загружаем пользователя при восстановлении токена
+      if (access && !this.user) {
+        this.fetchUser().catch((error) => {
+          console.warn('Failed to fetch user after token restore:', error)
+        })
       }
     },
 

@@ -1,12 +1,19 @@
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHistory, type RouteMeta } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 
-import LoginView  from '@/views/LoginView.vue'
-import Dashboard  from '@/views/DashboardView.vue'
-import Customers  from '@/views/CustomersView.vue'
-import Workers    from '@/views/WorkersView.vue'
+import LoginView from '@/views/LoginView.vue'
+import Dashboard from '@/views/DashboardView.vue'
+import Customers from '@/views/CustomersView.vue'
+import Workers from '@/views/WorkersView.vue'
 
 // import { useAuthStore } from '@/stores/auth'
 // const store = useAuthStore
+
+interface AuthMeta extends RouteMeta {
+  layout?: string
+  requiresAuth?: boolean
+  allowedRoles?: string[] // ← ДОБАВЛЯЕМ ТИП
+}
 
 const routes = [
   { path: '/', redirect: '/login' },
@@ -17,7 +24,7 @@ const routes = [
     meta: {
       layout: 'AuthLayout',
       requiresAuth: false,
-    },
+    } as AuthMeta,
   },
   {
     path: '/dashboard',
@@ -26,7 +33,8 @@ const routes = [
     meta: {
       layout: 'MainLayout',
       requiresAuth: true,
-    },
+      allowedRoles: ['manager'],
+    } as AuthMeta,
   },
   // {
   //   path: '/dashboard',
@@ -44,7 +52,8 @@ const routes = [
     meta: {
       layout: 'MainLayout',
       requiresAuth: true,
-    },
+      allowedRoles: ['manager', 'worker'],
+    } as AuthMeta,
   },
   {
     path: '/workers',
@@ -53,7 +62,8 @@ const routes = [
     meta: {
       layout: 'MainLayout',
       requiresAuth: true,
-    },
+      allowedRoles: ['manager'],
+    } as AuthMeta,
   },
   // {
   //   path: '/config',
@@ -72,6 +82,14 @@ const router = createRouter({
 })
 
 router.beforeEach(async (to) => {
+  const authStore = useAuthStore()
+
+  // ЕСЛИ УЖЕ ИДЕМ НА LOGIN - ПРОПУСКАЕМ ПРОВЕРКИ
+  if (to.name === 'Login') {
+    return true
+  }
+
+  // 1. ПРОВЕРКА АУТЕНТИФИКАЦИИ
   if (to.meta.requiresAuth) {
     const token = localStorage.getItem('access_token')
     console.log(`token from beforeEach: ${token}`)
@@ -79,16 +97,30 @@ router.beforeEach(async (to) => {
     if (!token) return '/login'
 
     try {
-      // await fetch('/api/users/me/', {
-      //   headers: {
-      //     Authorization: `Bearer ${token}`,
-      //   },
-      // })
-      return true
+      if (!authStore.user) {
+        await authStore.fetchUser()
+      }
     } catch {
       return '/login'
     }
   }
+
+  // 2. ПРОВЕРКА РОЛЕЙ
+  const allowedRoles = to.meta.allowedRoles as string[] | undefined
+  if (allowedRoles) {
+    const userRole = authStore.user?.role
+
+    if (!userRole || !allowedRoles.includes(userRole)) {
+      // ВАЖНО: проверяем чтобы не редиректить на самого себя
+      if (to.name !== 'Customers') {
+        return '/customers'
+      }
+      // Если уже на customers - разрешаем
+      return true
+    }
+  }
+
+  return true
 })
 
 export default router

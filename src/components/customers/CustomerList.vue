@@ -15,7 +15,7 @@ const emit = defineEmits<{
 }>()
 
 function handleClick(customer: Customer) {
-  emit('select', customer.id)
+  emit('select', customer.id.toString())
 }
 
 function handleAllClick() {
@@ -48,7 +48,7 @@ function handleAllClick() {
         v-for="customer in customers"
         :key="customer.id"
         :value="customer.id"
-        :active="selectedCustomerId === customer.id"
+        :active="selectedCustomerId === customer.id.toString()"
         @click="handleClick(customer)"
         class="rounded-lg"
       >
@@ -73,7 +73,7 @@ function handleAllClick() {
             color="red"
             size="small"
             variant="text"
-            @click.stop="emit('delete', customer.id)"
+            @click.stop="emit('delete', customer.id.toString())"
           />
         </template>
       </v-list-item>

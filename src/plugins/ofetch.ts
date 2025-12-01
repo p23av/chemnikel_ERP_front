@@ -13,26 +13,32 @@ const api = ofetch.create({
     const token = authStore.accessToken || localStorage.getItem('access_token')
 
     if (token) {
-      options.headers = {
-        ...options.headers,
-        'X-Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      }
+      const headers = new Headers(options.headers)
+      headers.set('X-Authorization', `Bearer ${token}`)
+      headers.set('Content-Type', 'application/json')
+
+      options.headers = headers
     }
   },
 
   // onResponseError — вызывается при ошибках в ответах (например, 401)
   async onResponseError({ request, response, options }) {
+    // console.log(request)
+    // console.log(response)
+    // console.log(options)
+
     if (response.status === 401) {
+      const authStore = useAuthStore()
       try {
-        const newToken = await authStore.refreshToken() // Пытаемся обновить токен
+        const newToken = await authStore.apiRefreshToken() // Пытаемся обновить токен
+        console.log(!!newToken)
 
         if (newToken) {
           // Сохраняем новый токен в store
           authStore.setAccessToken(newToken)
 
           // Повторяем оригинальный запрос с новым токеном
-          return ofetch(request, {
+          await ofetch(request, {
             ...options,
             headers: {
               ...options.headers,
@@ -46,15 +52,8 @@ const api = ofetch.create({
         throw new Error('Unauthorized')
       }
     }
-    return Promise.reject(response)
+    throw response._data || response
   },
 })
 
 export default api
-
-//   return {
-//     provide: {
-//       api: fetchInstance,
-//     },
-//   }
-// })

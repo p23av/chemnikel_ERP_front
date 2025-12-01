@@ -1,7 +1,84 @@
+<script setup lang="ts">
+import { onMounted } from 'vue'
+import { useAuthStore } from '@/stores/auth'
+import { useRouter } from 'vue-router'
+
+import { useCustomersStore } from '@/stores/customers'
+import { useProductsStore } from '@/stores/products'
+
+const authStore = useAuthStore()
+const router = useRouter()
+
+const customersStore = useCustomersStore()
+const productsStore = useProductsStore()
+
+// Загружаем данные при монтировании компонента
+onMounted(async () => {
+  try {
+    await customersStore.fetchCustomers()
+    await productsStore.fetchProducts()
+  } catch (err: any) {
+    if (err?.status === 401) {
+      router.push('/login')
+    }
+  }
+})
+
+const handleLogout = () => {
+  authStore.logout()
+  router.push('/login')
+}
+
+interface NavItem {
+  title: string
+  icon: string
+  value: string
+  to: string
+  roles: string[] // Каким ролям доступен этот пункт
+}
+
+const allNavItems: NavItem[] = [
+  {
+    title: 'Заказчики/Детали',
+    icon: '📊',
+    value: 'dashboard',
+    to: '/dashboard',
+    roles: ['manager'], // Только менеджер
+  },
+  {
+    title: 'Заказы',
+    icon: '👥',
+    value: 'customers',
+    to: '/customers',
+    roles: ['manager', 'worker'], // Менеджер и рабочий
+  },
+  {
+    title: 'Сотрудники',
+    icon: '🧑‍🤝‍🧑',
+    value: 'workers',
+    to: '/workers',
+    roles: ['manager'], // Только менеджер
+  },
+]
+
+// Фильтруем навигацию по роли пользователя
+const navItems = authStore.user
+  ? allNavItems.filter((item) => item.roles.includes(authStore.user!.role))
+  : []
+
+// const navItems: NavItem[] = [
+//   { title: 'Заказчики/Детали', icon: '📊', value: 'dashboard', to: '/dashboard' },
+//   { title: 'Заказы', icon: '👥', value: 'customers', to: '/customers' },
+//   // { title: 'Projects', icon: '📁', value: 'projects', to: '/projects' },
+//   { title: 'Сотрудники', icon: '🧑‍🤝‍🧑', value: 'workers', to: '/workers' },
+//   // { title: 'Calendar', icon: '📅', value: 'calendar', to: '/calendar' },
+// ]
+</script>
+
 <template>
   <div class="main-layout">
     <aside class="sidebar">
-      <div class="sidebar-header">Химникель ERP</div>
+      <!-- <div class="sidebar-header">Химникель ERP</div> -->
       <nav class="nav">
         <RouterLink v-for="item in navItems" :key="item.title" :to="item.to" class="nav-item">
           <span class="nav-icon">{{ item.icon }}</span>
@@ -13,7 +90,8 @@
     <div class="content-area">
       <header class="topbar">
         <div class="topbar-left">
-          <div class="logo">🔷Заголовок</div>
+          <!-- <div class="logo">🔷Заголовок</div> -->
+          <div class="logo">Химникель ERP</div>
         </div>
         <div class="topbar-right">
           <button class="settings-btn">⚙️</button>
@@ -34,34 +112,6 @@
     </div>
   </div>
 </template>
-
-<script setup lang="ts">
-import { useAuthStore } from '@/stores/auth'
-import { useRouter } from 'vue-router'
-
-const authStore = useAuthStore()
-const router = useRouter()
-
-const handleLogout = () => {
-  authStore.logout()
-  router.push('/login')
-}
-
-interface NavItem {
-  title: string
-  icon: string
-  value: string
-  to: string
-}
-
-const navItems: NavItem[] = [
-  { title: 'Dashboard', icon: '📊', value: 'dashboard', to: '/dashboard' },
-  { title: 'Customers', icon: '👥', value: 'customers', to: '/customers' },
-  { title: 'Projects', icon: '📁', value: 'projects', to: '/projects' },
-  { title: 'Team', icon: '🧑‍🤝‍🧑', value: 'workers', to: '/workers' },
-  { title: 'Calendar', icon: '📅', value: 'calendar', to: '/calendar' },
-]
-</script>
 
 <style scoped>
 .main-layout {
@@ -179,4 +229,6 @@ const navItems: NavItem[] = [
   color: #94a3b8;
   background-color: #f8fafc;
 }
+
+/*  */
 </style>
