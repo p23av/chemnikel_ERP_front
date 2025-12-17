@@ -1,7 +1,10 @@
 <script lang="ts" setup>
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { Order } from '@/stores/orders'
 import type { Product } from '@/stores/products'
+import { useCustomersStore } from '@/stores/customers'
+
+const customersStore = useCustomersStore()
 
 const props = defineProps<{
   modelValue: boolean
@@ -23,11 +26,20 @@ watch(dialog, (val) => emit('update:modelValue', val))
 
 // ИСПРАВЛЕНО: product должен быть number, не null
 const form = ref<Omit<Order, 'id'> & { id?: number }>({
-  product: props.order?.product || 0, // 0 вместо null
+  product: props.order?.product || 0,
   quantity: props.order?.quantity || 1,
   status: props.order?.status || 0,
   created_at: props.order?.created_at || new Date().toISOString(),
   updated_at: props.order?.updated_at || new Date().toISOString(),
+})
+
+// Добавь состояние для выбранного заказчика
+const selectedCustomerId = ref<number | null>(null)
+
+// Отфильтрованные продукты по выбранному заказчику
+const filteredProducts = computed(() => {
+  if (!selectedCustomerId.value) return []
+  return props.products.filter((product) => product.customer === selectedCustomerId.value)
 })
 
 watch(
@@ -35,15 +47,18 @@ watch(
   (val) => {
     if (val) {
       form.value = { ...val }
+      // Найти заказчика для текущего продукта
+      const currentProduct = props.products.find((p) => p.id === val.product)
+      selectedCustomerId.value = currentProduct?.customer || null
     } else {
-      // ИСПРАВЛЕНО: product должен быть number
       form.value = {
-        product: 0, // 0 вместо null
+        product: 0,
         quantity: 1,
         status: 0,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }
+      selectedCustomerId.value = null
     }
   },
   { immediate: true },
@@ -73,16 +88,33 @@ function closeModal() {
       </h2>
 
       <form @submit.prevent="save" class="form">
+        <!-- 1. Выбор заказчика -->
         <div class="form-group">
+          <label for="customer">Заказчик</label>
+          <select id="customer" v-model="selectedCustomerId" required @change="form.product = 0">
+            <option disabled value="null">Выберите заказчика</option>
+            <option
+              v-for="customer in customersStore.customers"
+              :key="customer.id"
+              :value="customer.id"
+            >
+              {{ customer.name }}
+            </option>
+          </select>
+        </div>
+
+        <!-- 2. Выбор детали (только если выбран заказчик) -->
+        <div class="form-group" v-if="selectedCustomerId">
           <label for="product">Деталь</label>
-          <select id="product" v-model="form.product" required>
+          <select id="product" v-model="form.product" :disabled="!selectedCustomerId" required>
             <option disabled value="null">Выберите деталь</option>
-            <option v-for="product in props.products" :key="product.id" :value="product.id">
+            <option v-for="product in filteredProducts" :key="product.id" :value="product.id">
               {{ product.name }}
             </option>
           </select>
         </div>
 
+        <!-- 3. Количество -->
         <div class="form-group">
           <label for="quantity">Количество</label>
           <input

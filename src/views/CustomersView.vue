@@ -25,6 +25,7 @@ const loadError = ref<string | null>(null)
 // загружаем данные при монтировании
 onMounted(async () => {
   await loadInitialData()
+  console.log('Прогресс заказов:', debugProgress.value)
 })
 async function loadInitialData() {
   isLoading.value = true
@@ -108,21 +109,21 @@ const completedOrders = computed(() => {
 })
 
 // Вычисляем выполненные количества для каждого заказа
-const orderCompletion = computed(() => {
-  const completion: { [orderId: number]: number } = {}
+// const orderCompletion = computed(() => {
+//   const completion: { [orderId: number]: number } = {}
 
-  orders.value.forEach((order) => {
-    // Фильтруем процессы этого заказа с заполненным end_time
-    const orderProcesses = allProcesses.value.filter(
-      (p) => p.order === order.id && p.end_time !== null,
-    )
-    // Суммируем quantity завершенных процессов
-    const completedQuantity = orderProcesses.reduce((sum, process) => sum + process.quantity, 0)
-    completion[order.id] = completedQuantity
-  })
+//   orders.value.forEach((order) => {
+//     // Фильтруем процессы этого заказа с заполненным end_time
+//     const orderProcesses = allProcesses.value.filter(
+//       (p) => p.order === order.id && p.end_time !== null,
+//     )
+//     // Суммируем quantity завершенных процессов
+//     const completedQuantity = orderProcesses.reduce((sum, process) => sum + process.quantity, 0)
+//     completion[order.id] = completedQuantity
+//   })
 
-  return completion
-})
+//   return completion
+// })
 
 // ======== Заказы ========
 function addOrder() {
@@ -197,9 +198,9 @@ async function saveProcess(data: Omit<Process, 'id'> & { id?: number }) {
     }
 
     // После сохранения процесса проверяем статус заказа (если заказ указан)
-    if (data.order) {
-      await checkOrderCompletion(data.order)
-    }
+    // if (data.order) {
+    //   await checkOrderCompletion(data.order)
+    // }
 
     showProcessForm.value = false
   } catch (err: any) {
@@ -243,27 +244,27 @@ const orderLayerStatus = computed(() => {
   return statusMap
 })
 
-async function checkOrderCompletion(orderId: number) {
-  const order = ordersStore.getOrderById(orderId)
-  if (!order || order.status === 1) return
+// async function checkOrderCompletion(orderId: number) {
+//   const order = ordersStore.getOrderById(orderId)
+//   if (!order || order.status === 1) return
 
-  const layers = orderLayerStatus.value[orderId] || {}
-  const completed = Object.values(layers).reduce((sum, l) => sum + l.done, 0)
-  const total = Object.values(layers).reduce((sum, l) => sum + l.total, 0)
+//   const layers = orderLayerStatus.value[orderId] || {}
+//   const completed = Object.values(layers).reduce((sum, l) => sum + l.done, 0)
+//   const total = Object.values(layers).reduce((sum, l) => sum + l.total, 0)
 
-  if (total > 0 && completed >= total) {
-    try {
-      await ordersStore.updateOrder(orderId, {
-        ...order,
-        status: 1,
-        updated_at: new Date().toISOString(),
-      })
-      console.log(`✅ Заказ #${orderId} выполнен!`)
-    } catch (err) {
-      console.error('Ошибка при обновлении статуса заказа:', err)
-    }
-  }
-}
+//   if (total > 0 && completed >= total) {
+//     try {
+//       await ordersStore.updateOrder(orderId, {
+//         ...order,
+//         status: 1,
+//         updated_at: new Date().toISOString(),
+//       })
+//       console.log(`✅ Заказ #${orderId} выполнен!`)
+//     } catch (err) {
+//       console.error('Ошибка при обновлении статуса заказа:', err)
+//     }
+//   }
+// }
 
 // Обновление данных
 function refreshData() {
@@ -289,10 +290,28 @@ const orderCoatingProgress = computed(() => {
         coatingProgress[coatingName] = { completed: 0, total: 0 }
       }
 
-      coatingProgress[coatingName].total += process.quantity
+      // Ограничиваем total количеством в заказе
+      coatingProgress[coatingName].total = Math.min(
+        coatingProgress[coatingName].total + process.quantity,
+        order.quantity,
+      )
+
       if (process.end_time) {
-        coatingProgress[coatingName].completed += process.quantity
+        // Ограничиваем completed количеством в заказе
+        coatingProgress[coatingName].completed = Math.min(
+          coatingProgress[coatingName].completed + process.quantity,
+          order.quantity,
+        )
       }
+    })
+
+    // Убеждаемся что значения не превышают количество в заказе
+    Object.keys(coatingProgress).forEach((coating) => {
+      coatingProgress[coating].total = Math.min(coatingProgress[coating].total, order.quantity)
+      coatingProgress[coating].completed = Math.min(
+        coatingProgress[coating].completed,
+        order.quantity,
+      )
     })
 
     progress[order.id] = coatingProgress
@@ -313,10 +332,14 @@ const getTotalProgress = (orderId: number) => {
   if (!order) return { completed: 0, total: 0 }
 
   const coatingProgress = orderCoatingProgress.value[orderId] || {}
-  const totalCompleted = Object.values(coatingProgress).reduce(
-    (sum, coating) => sum + coating.completed,
-    0,
-  )
+
+  // Для многослойных покрытий - берем минимальное выполненное количество
+  let totalCompleted = order.quantity // Максимум - весь заказ
+
+  if (Object.keys(coatingProgress).length > 0) {
+    // Ищем минимальное значение среди всех покрытий
+    totalCompleted = Math.min(...Object.values(coatingProgress).map((coating) => coating.completed))
+  }
 
   return {
     completed: totalCompleted,
@@ -340,6 +363,40 @@ const formatCoating = (coatingData: unknown) => {
     })
     .join('.')
 }
+
+// Переключение статуса заказа
+async function toggleOrderStatus(order: any) {
+  const newStatus = order.status === 0 ? 1 : 0
+  const action = newStatus === 1 ? 'завершить' : 'вернуть в работу'
+
+  if (!confirm(`Вы уверены, что хотите ${action} заказ #${order.id}?`)) {
+    return
+  }
+
+  try {
+    await ordersStore.updateOrder(order.id, {
+      ...order,
+      status: newStatus,
+      updated_at: new Date().toISOString(),
+    })
+
+    // Обновляем локальные данные
+    refreshData()
+
+    alert(`Заказ #${order.id} ${newStatus === 1 ? 'завершен' : 'возвращен в работу'}!`)
+  } catch (err: unknown) {
+    console.error('Ошибка при изменении статуса заказа:', err)
+    alert('Не удалось изменить статус заказа')
+  }
+}
+
+const debugProgress = computed(() => {
+  return activeOrders.value.map((order) => {
+    const progress = getTotalProgress(order.id)
+    console.log(`Заказ #${order.id}: ${progress.completed}/${progress.total}`)
+    return { orderId: order.id, progress }
+  })
+})
 </script>
 
 <template>
@@ -370,7 +427,14 @@ const formatCoating = (coatingData: unknown) => {
           <div v-if="activeOrders.length > 0" class="orders-section">
             <h3 class="section-title">Активные заказы</h3>
             <ul class="orders-list">
-              <li v-for="order in activeOrders" :key="order.id">
+              <li
+                v-for="order in activeOrders"
+                :key="order.id"
+                :class="{
+                  'completed-ready':
+                    getTotalProgress(order.id).completed === getTotalProgress(order.id).total,
+                }"
+              >
                 <div class="order-item">
                   <div class="order-info">
                     <!-- Заголовок заказа -->
@@ -446,6 +510,13 @@ const formatCoating = (coatingData: unknown) => {
                     </div>
                   </div>
                   <div class="order-actions">
+                    <button
+                      @click.stop="toggleOrderStatus(order)"
+                      title="Завершить заказ"
+                      class="complete-btn"
+                    >
+                      ✅
+                    </button>
                     <button @click.stop="editOrder(order.id)" title="Редактировать">✏️</button>
                     <button @click.stop="deleteOrder(order.id)" title="Удалить">🗑️</button>
                   </div>
@@ -461,12 +532,74 @@ const formatCoating = (coatingData: unknown) => {
               <li v-for="order in completedOrders" :key="order.id">
                 <div class="order-item completed-item">
                   <div class="order-info">
-                    <div class="order-product completed-product">
-                      {{ getProductName(order.product) }}
+                    <!-- Заголовок заказа как в активных -->
+                    <div class="order-header">
+                      <span class="order-number">Заказ #{{ order.id }}</span>
+                      <span class="order-product">
+                        {{ order.productData?.name || `Продукт #${order.product}` }}
+                        (Заказчик:
+                        {{
+                          customerStore.getCustomerById(order.productData?.customer || 0)?.name ||
+                          'Не указан'
+                        }})
+                      </span>
+                      <span class="order-coating"
+                        >Покрытие: {{ formatCoating(order.productData?.coating_data) }}</span
+                      >
+                      <span class="order-quantity">{{ order.quantity }} шт.</span>
                     </div>
-                    <div class="order-details completed-details">
-                      {{ order.quantity }} шт. • Выполнен
+
+                    <!-- Общий прогресс (может быть 100%) -->
+                    <div class="total-progress">
+                      <div class="progress-info">
+                        <span>Всего выполнено: </span>
+                        <strong
+                          >{{ getTotalProgress(order.id).completed }}/{{
+                            getTotalProgress(order.id).total
+                          }}
+                          шт.</strong
+                        >
+                      </div>
+                      <div class="progress-bar">
+                        <div
+                          class="progress-fill"
+                          :style="{
+                            width:
+                              Math.round(
+                                (getTotalProgress(order.id).completed /
+                                  getTotalProgress(order.id).total) *
+                                  100,
+                              ) + '%',
+                          }"
+                        ></div>
+                      </div>
                     </div>
+
+                    <!-- Прогресс по покрытиям -->
+                    <div class="coating-progress" v-if="orderCoatingProgress[order.id]">
+                      <div
+                        v-for="(coating, name) in orderCoatingProgress[order.id]"
+                        :key="name"
+                        class="coating-item"
+                      >
+                        <div class="coating-name">{{ name }}:</div>
+                        <div class="coating-stats">
+                          {{ coating.completed }}/{{ coating.total }} шт.
+                        </div>
+                        <div class="coating-bar">
+                          <div
+                            class="coating-fill"
+                            :style="{
+                              width:
+                                coating.total > 0
+                                  ? Math.round((coating.completed / coating.total) * 100) + '%'
+                                  : '0%',
+                            }"
+                          ></div>
+                        </div>
+                      </div>
+                    </div>
+
                     <div class="order-date completed-date">
                       Завершён:
                       {{
@@ -475,6 +608,13 @@ const formatCoating = (coatingData: unknown) => {
                     </div>
                   </div>
                   <div class="order-actions">
+                    <button
+                      @click.stop="toggleOrderStatus(order)"
+                      title="Вернуть в работу"
+                      class="return-btn"
+                    >
+                      🔄
+                    </button>
                     <button @click.stop="editOrder(order.id)" title="Просмотреть">👁️</button>
                   </div>
                 </div>
@@ -927,5 +1067,29 @@ const formatCoating = (coatingData: unknown) => {
   .coating-stats {
     text-align: left;
   }
+}
+
+.orders-list li.completed-ready .order-item {
+  background: #d1fae5; /* светло-зеленый */
+  border-left: 3px solid #10b981;
+}
+
+.complete-btn,
+.return-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: 3px;
+}
+
+.complete-btn:hover {
+  background: #10b981;
+  color: white;
+}
+
+.return-btn:hover {
+  background: #3b82f6;
+  color: white;
 }
 </style>
