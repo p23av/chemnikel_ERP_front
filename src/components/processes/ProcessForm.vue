@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { computed, onMounted, ref, watch, type PropType } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch, type PropType } from 'vue'
 import type { Process } from '@/stores/processes'
 import type { Order } from '@/stores/orders'
 import { useProductsStore } from '@/stores/products'
@@ -31,49 +31,14 @@ const emit = defineEmits<{
   (e: 'save', value: Omit<Process, 'id'> & { id?: number }): void
 }>()
 
-// const activeOrders = computed(() => {
-//   return props.orders.filter((order) => order.status === 0)
-// })
-const filteredOrders = computed(() => {
-  // При редактировании показываем все заказы (чтобы видеть текущий)
-  if (props.process?.order != null) {
-    return props.orders.filter((order) => order.status === 0 || order.id === props.process?.order)
-  }
-  // При создании показываем только активные
-  return props.orders.filter((order) => order.status === 0)
-})
+// Состояние для выбранного заказчика
+const selectedCustomerId = ref<number | null>(null)
 
-// Добавить состояние для хранения пользователей
+// Состояние для хранения пользователей
 const users = ref<User[]>([])
-// Загрузить пользователей при монтировании
-onMounted(async () => {
-  try {
-    users.value = await authStore.fetchAllUsers()
-  } catch (error: unknown) {
-    console.error('Error loading users:', error)
-  }
-})
-const workers = computed(() => {
-  // При редактировании показываем всех рабочих (включая неактивных)
-  if (props.process?.worker) {
-    return users.value.filter((user) => user.role === 'worker')
-  }
 
-  // При создании показываем только активных рабочих
-  return users.value.filter((user) => user.role === 'worker' && user.is_active)
-})
-
-// Синхронизируем с modelValue
-const show = ref(props.modelValue)
-watch(
-  () => props.modelValue,
-  (val) => {
-    show.value = val
-  },
-)
-watch(show, (val) => {
-  emit('update:modelValue', val)
-})
+// Флаг монтирования компонента
+const isComponentMounted = ref(false)
 
 // Линии покрытий
 const lines = [
@@ -81,6 +46,11 @@ const lines = [
   { name: 'Медь', code: '1', sublines: [1] },
   { name: 'О-Ви', code: '2', sublines: [1] },
 ]
+
+// Функция для получения текущего времени в нужном формате
+const getCurrentDateTime = () => {
+  return new Date().toISOString().slice(0, 16)
+}
 
 type ProcessFormData = {
   order: number | null
@@ -94,13 +64,9 @@ type ProcessFormData = {
   worker: number | null
 }
 
-// Функция для получения текущего времени в нужном формате
-const getCurrentDateTime = () => {
-  return new Date().toISOString().slice(0, 16)
-}
-
+// Форма
 const form = ref<ProcessFormData>({
-  order: props.process?.order || (props.orders[0]?.id ?? null),
+  order: props.process?.order || null,
   line: props.process?.line || '0',
   subline: props.process?.subline || 1,
   quantity: props.process?.quantity || 1,
@@ -109,6 +75,8 @@ const form = ref<ProcessFormData>({
   line_display: props.process?.line_display,
   worker: props.process?.worker || null,
 })
+
+// Computed свойства для форматирования времени
 const startTimeForInput = computed({
   get: () => {
     if (form.value.start_time) {
@@ -132,45 +100,141 @@ const endTimeForInput = computed({
   },
 })
 
+// Отфильтрованные заказы с учетом всех условий
+const filteredOrders = computed(() => {
+  let filtered = props.orders
+
+  // 1. Только активные заказы (status: 0)
+  filtered = filtered.filter((order) => order.status === 0)
+
+  // 2. Фильтрация по заказчику
+  if (selectedCustomerId.value) {
+    filtered = filtered.filter((order) => {
+      const product = productsStore.getProductById(order.product)
+      return product?.customer === selectedCustomerId.value
+    })
+  }
+
+  // 3. Фильтрация по покрытию (выбранной линии)
+  if (form.value.line) {
+    const currentLine = form.value.line
+    filtered = filtered.filter((order) => {
+      const product = productsStore.getProductById(order.product)
+      if (!product?.coating_data) return false
+
+      // Проверяем, есть ли у детали это покрытие
+      // coating_data - это объект вида { "0": 1.5, "1": 2.0 }
+      // Проверяем наличие ключа (кода линии) в объекте
+      return Object.prototype.hasOwnProperty.call(product.coating_data, currentLine)
+    })
+  }
+
+  // 4. При редактировании добавляем текущий заказ (если его нет)
+  if (props.process?.order != null) {
+    const currentOrder = props.orders.find((o) => o.id === props.process?.order)
+    if (currentOrder && !filtered.some((o) => o.id === currentOrder.id)) {
+      filtered = [...filtered, currentOrder]
+    }
+  }
+
+  return filtered
+})
+
+// Список рабочих
+const workers = computed(() => {
+  if (props.process?.worker) {
+    // При редактировании показываем всех рабочих (включая неактивных)
+    return users.value.filter((user) => user.role === 'worker')
+  }
+  // При создании показываем только активных рабочих
+  return users.value.filter((user) => user.role === 'worker' && user.is_active)
+})
+
+// Синхронизация с modelValue
+const show = ref(props.modelValue)
+watch(
+  () => props.modelValue,
+  (val) => {
+    show.value = val
+  },
+)
+watch(show, (val) => {
+  emit('update:modelValue', val)
+})
+
+// Lifecycle hooks
+onMounted(async () => {
+  isComponentMounted.value = true
+
+  try {
+    // Загружаем пользователей и заказчиков параллельно
+    await Promise.all([
+      authStore.fetchAllUsers().then((fetchedUsers) => {
+        if (isComponentMounted.value) {
+          users.value = fetchedUsers
+        }
+      }),
+      customersStore.fetchCustomers(), // Загружаем заказчиков, результат сохраняется в store
+    ])
+  } catch (error: unknown) {
+    console.error('Error loading data:', error)
+  }
+})
+
+onUnmounted(() => {
+  isComponentMounted.value = false
+})
+
 // Обновляем форму при изменении процесса
 watch(
   () => props.process,
   (proc) => {
     if (proc) {
-      // Только если процесс изменился, обновляем форму
       form.value = {
-        order: proc.order || (props.orders[0]?.id ?? null),
+        order: proc.order || null,
         line: proc.line || '0',
         subline: proc.subline || 1,
         quantity: proc.quantity || 1,
-        start_time: proc.start_time || null, // Сохраняем оригинальное время
-        end_time: proc.end_time || null, // Сохраняем оригинальное время
+        start_time: proc.start_time || null,
+        end_time: proc.end_time || null,
         line_display: proc.line_display,
         worker: proc.worker || null,
       }
+
+      // Установить заказчика для текущего заказа
+      if (proc.order) {
+        const order = props.orders.find((o) => o.id === proc.order)
+        if (order) {
+          const product = productsStore.getProductById(order.product)
+          selectedCustomerId.value = product?.customer || null
+
+          // Проверить, что текущий заказ подходит под фильтр линии
+          // Если не подходит - сбросить выбор заказа
+          if (
+            product?.coating_data &&
+            !Object.prototype.hasOwnProperty.call(product.coating_data, proc.line)
+          ) {
+            form.value.order = null
+          }
+        }
+      }
+    } else {
+      selectedCustomerId.value = null
     }
   },
   { immediate: true },
 )
 
-// Получаем название продукта для заказа
-// const getProductName = (productId: number) => {
-//   const product = productsStore.getProductById(productId)
-//   return product ? product.name : `Продукт #${productId}`
-// }
-
 // Функция для получения информации о заказе для отображения
 const getOrderDisplayInfo = (order: Order) => {
-  // Получаем продукт
   const product = productsStore.getProductById(order.product)
   const productName = product?.name || `Продукт #${order.product}`
 
-  // Получаем заказчика
   const customerName = product?.customer
     ? customersStore.getCustomerById(product.customer)?.name || 'Не указан'
     : 'Не указан'
 
-  return `Заказ #${order.id} - ${productName} (Заказчик: ${customerName})` // - ${order.quantity} шт.`
+  return `Заказ #${order.id} - ${productName} (Заказчик: ${customerName})`
 }
 
 function save() {
@@ -179,7 +243,6 @@ function save() {
     return
   }
 
-  // Создаем данные для сохранения
   const saveData: Omit<Process, 'id'> & { id?: number } = {
     order: form.value.order,
     line: form.value.line,
@@ -209,6 +272,22 @@ function cancel() {
       </h2>
 
       <form @submit.prevent="save" class="form">
+        <!-- 1. Выбор заказчика -->
+        <div class="form-group">
+          <label for="customer">Заказчик</label>
+          <select id="customer" v-model="selectedCustomerId" @change="form.order = null">
+            <option :value="null">Все заказчики</option>
+            <option
+              v-for="customer in customersStore.customers || []"
+              :key="customer.id"
+              :value="customer.id"
+            >
+              {{ customer.name }}
+            </option>
+          </select>
+        </div>
+
+        <!-- 2. Выбор заказа -->
         <div class="form-group">
           <label for="order">Заказ</label>
           <select id="order" v-model="form.order" required>
@@ -219,15 +298,26 @@ function cancel() {
           </select>
         </div>
 
+        <!-- 3. Линия покрытия (редактируемая только при создании) -->
         <div class="form-group">
           <label for="line">Линия покрытия</label>
-          <select id="line" v-model="form.line" required>
+          <select
+            id="line"
+            v-model="form.line"
+            :disabled="!!props.process"
+            required
+            @change="form.order = null"
+          >
             <option v-for="line in lines" :key="line.code" :value="line.code">
               {{ line.name }}
             </option>
           </select>
+          <div v-if="props.process" class="field-hint">
+            Линию покрытия нельзя изменить при редактировании
+          </div>
         </div>
 
+        <!-- 4. Номер ванны -->
         <div class="form-group">
           <label for="subline">Номер ванны</label>
           <select id="subline" v-model="form.subline" required>
@@ -241,6 +331,7 @@ function cancel() {
           </select>
         </div>
 
+        <!-- 5. Количество -->
         <div class="form-group">
           <label for="quantity">Количество</label>
           <input
@@ -253,6 +344,7 @@ function cancel() {
           />
         </div>
 
+        <!-- 6. Исполнитель -->
         <div class="form-group">
           <label for="worker">Исполнитель</label>
           <select id="worker" v-model="form.worker">
@@ -263,7 +355,7 @@ function cancel() {
           </select>
         </div>
 
-        <!-- Время начала и окончания -->
+        <!-- 7. Время начала и окончания -->
         <div class="form-row">
           <div class="form-group">
             <label for="start_time">Время начала</label>
@@ -288,6 +380,7 @@ function cancel() {
           </div>
         </div>
 
+        <!-- 8. Кнопки действий -->
         <div class="form-actions">
           <button type="submit" class="btn save-btn">💾 Сохранить</button>
           <button type="button" class="btn cancel-btn" @click="cancel">❌ Отмена</button>

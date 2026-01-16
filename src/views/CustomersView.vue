@@ -290,22 +290,16 @@ const orderCoatingProgress = computed(() => {
         coatingProgress[coatingName] = { completed: 0, total: 0 }
       }
 
-      // Ограничиваем total количеством в заказе
-      coatingProgress[coatingName].total = Math.min(
-        coatingProgress[coatingName].total + process.quantity,
-        order.quantity,
-      )
+      // Увеличиваем общее количество
+      coatingProgress[coatingName].total += process.quantity
 
+      // Увеличиваем выполненные, если есть end_time
       if (process.end_time) {
-        // Ограничиваем completed количеством в заказе
-        coatingProgress[coatingName].completed = Math.min(
-          coatingProgress[coatingName].completed + process.quantity,
-          order.quantity,
-        )
+        coatingProgress[coatingName].completed += process.quantity
       }
     })
 
-    // Убеждаемся что значения не превышают количество в заказе
+    // Ограничиваем значения количеством в заказе
     Object.keys(coatingProgress).forEach((coating) => {
       coatingProgress[coating].total = Math.min(coatingProgress[coating].total, order.quantity)
       coatingProgress[coating].completed = Math.min(
@@ -329,20 +323,34 @@ const getCoatingName = (lineCode: string) => {
 // Получаем общий прогресс заказа
 const getTotalProgress = (orderId: number) => {
   const order = ordersStore.getOrderById(orderId)
-  if (!order) return { completed: 0, total: 0 }
+  if (!order) return { completed: 0, total: 0 } // Исправлено здесь
 
   const coatingProgress = orderCoatingProgress.value[orderId] || {}
+
+  // Если нет данных о процессах, значит ничего не выполнено
+  if (Object.keys(coatingProgress).length === 0) {
+    return {
+      completed: 0,
+      total: order.quantity,
+    }
+  }
 
   // Для многослойных покрытий - берем минимальное выполненное количество
   let totalCompleted = order.quantity // Максимум - весь заказ
 
   if (Object.keys(coatingProgress).length > 0) {
     // Ищем минимальное значение среди всех покрытий
-    totalCompleted = Math.min(...Object.values(coatingProgress).map((coating) => coating.completed))
+    const coatingValues = Object.values(coatingProgress).map((coating) => coating.completed)
+    // Если все покрытия имеют прогресс, берем минимальное
+    if (coatingValues.length > 0 && coatingValues.every((val) => val >= 0)) {
+      totalCompleted = Math.min(...coatingValues)
+    } else {
+      totalCompleted = 0
+    }
   }
 
   return {
-    completed: totalCompleted,
+    completed: Math.min(totalCompleted, order.quantity),
     total: order.quantity,
   }
 }
