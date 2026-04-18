@@ -7,6 +7,9 @@ import { useCustomersStore } from '@/stores/customers'
 import { useAuthStore } from '@/stores/auth'
 import type { User } from '@/stores/auth'
 
+import { useLinesStore } from '@/stores/lines'
+const linesStore = useLinesStore()
+
 const productsStore = useProductsStore()
 const customersStore = useCustomersStore()
 const authStore = useAuthStore()
@@ -24,6 +27,10 @@ const props = defineProps({
     type: Array as PropType<Order[]>,
     default: () => [],
   },
+  selectedDate: {
+    type: Date,
+    required: true,
+  },
 })
 
 const emit = defineEmits<{
@@ -40,22 +47,10 @@ const users = ref<User[]>([])
 // Флаг монтирования компонента
 const isComponentMounted = ref(false)
 
-// Линии покрытий
-const lines = [
-  { name: 'Никель', code: '0', sublines: [1, 2] },
-  { name: 'Медь', code: '1', sublines: [1] },
-  { name: 'О-Ви', code: '2', sublines: [1] },
-]
-
-// Функция для получения текущего времени в нужном формате
-const getCurrentDateTime = () => {
-  return new Date().toISOString().slice(0, 16)
-}
-
 type ProcessFormData = {
   order: number | null
-  line: string
-  subline: number
+  line?: number | null
+  subline?: number | null
   quantity: number
   start_time: string | null
   end_time: string | null
@@ -67,36 +62,85 @@ type ProcessFormData = {
 // Форма
 const form = ref<ProcessFormData>({
   order: props.process?.order || null,
-  line: props.process?.line || '0',
-  subline: props.process?.subline || 1,
+  line: props.process?.line || null,
+  subline: props.process?.subline || null,
   quantity: props.process?.quantity || 1,
-  start_time: props.process?.start_time || getCurrentDateTime(),
+  start_time: props.process?.start_time || null,
   end_time: props.process?.end_time || null,
   line_display: props.process?.line_display,
   worker: props.process?.worker || null,
 })
 
+const combineDateTime = (date: Date, timeString: string | null): string | null => {
+  if (!timeString) return null
+
+  const [hours, minutes] = timeString.split(':').map(Number)
+  const result = new Date(date)
+  result.setHours(hours, minutes, 0, 0)
+  return result.toISOString()
+}
+
+const getTimeFromISO = (isoString: string | null): string | null => {
+  if (!isoString) return null
+  const date = new Date(isoString)
+  return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`
+}
+
 // Computed свойства для форматирования времени
-const startTimeForInput = computed({
+// const startTimeForInput = computed({
+//   get: () => {
+//     if (form.value.start_time) {
+//       return form.value.start_time.slice(0, 16)
+//     }
+//     // Если это создание нового процесса и нет времени - ставим текущее
+//     if (!props.process?.order) {
+//       return getCurrentDateTime()
+//     }
+//     return null
+//   },
+//   set: (val) => {
+//     form.value.start_time = val
+//   },
+// })
+
+// const endTimeForInput = computed({
+//   get: () => (form.value.end_time ? form.value.end_time.slice(0, 16) : null),
+//   set: (val) => {
+//     form.value.end_time = val
+//   },
+// })
+
+const startTime = computed({
   get: () => {
-    if (form.value.start_time) {
-      return form.value.start_time.slice(0, 16)
-    }
-    // Если это создание нового процесса и нет времени - ставим текущее
-    if (!props.process?.order) {
-      return getCurrentDateTime()
-    }
-    return null
+    const time = getTimeFromISO(form.value.start_time)
+    return time
+      ? { hours: parseInt(time.split(':')[0]), minutes: parseInt(time.split(':')[1]) }
+      : null
   },
-  set: (val) => {
-    form.value.start_time = val
+  set: (val: { hours: number; minutes: number } | null) => {
+    if (val) {
+      const timeString = `${val.hours.toString().padStart(2, '0')}:${val.minutes.toString().padStart(2, '0')}`
+      form.value.start_time = combineDateTime(props.selectedDate, timeString)
+    } else {
+      form.value.start_time = null
+    }
   },
 })
 
-const endTimeForInput = computed({
-  get: () => (form.value.end_time ? form.value.end_time.slice(0, 16) : null),
-  set: (val) => {
-    form.value.end_time = val
+const endTime = computed({
+  get: () => {
+    const time = getTimeFromISO(form.value.end_time)
+    return time
+      ? { hours: parseInt(time.split(':')[0]), minutes: parseInt(time.split(':')[1]) }
+      : null
+  },
+  set: (val: { hours: number; minutes: number } | null) => {
+    if (val) {
+      const timeString = `${val.hours.toString().padStart(2, '0')}:${val.minutes.toString().padStart(2, '0')}`
+      form.value.end_time = combineDateTime(props.selectedDate, timeString)
+    } else {
+      form.value.end_time = null
+    }
   },
 })
 
@@ -117,15 +161,16 @@ const filteredOrders = computed(() => {
 
   // 3. Фильтрация по покрытию (выбранной линии)
   if (form.value.line) {
-    const currentLine = form.value.line
+    const currentLineId = form.value.line
+    const selectedLine = linesStore.getLineById(currentLineId)
+    const lineCode = selectedLine?.code // Получаем код линии для проверки в coating_data
+
     filtered = filtered.filter((order) => {
       const product = productsStore.getProductById(order.product)
       if (!product?.coating_data) return false
 
-      // Проверяем, есть ли у детали это покрытие
-      // coating_data - это объект вида { "0": 1.5, "1": 2.0 }
-      // Проверяем наличие ключа (кода линии) в объекте
-      return Object.prototype.hasOwnProperty.call(product.coating_data, currentLine)
+      // Проверяем наличие ключа (кода линии) в объекте coating_data
+      return lineCode ? Object.prototype.hasOwnProperty.call(product.coating_data, lineCode) : false
     })
   }
 
@@ -166,6 +211,16 @@ watch(show, (val) => {
 onMounted(async () => {
   isComponentMounted.value = true
 
+  await linesStore.init()
+
+  // Добавить значения по умолчанию для новой формы
+  if (!props.process && linesStore.activeLines.length > 0) {
+    const firstLine = linesStore.activeLines[0]
+    const firstSubline = linesStore.getSublinesByLine(firstLine.id)[0]
+    form.value.line = firstLine.id
+    form.value.subline = firstSubline?.id || null
+  }
+
   try {
     // Загружаем пользователей и заказчиков параллельно
     await Promise.all([
@@ -192,8 +247,8 @@ watch(
     if (proc) {
       form.value = {
         order: proc.order || null,
-        line: proc.line || '0',
-        subline: proc.subline || 1,
+        line: proc.line || null, // ИЗМЕНЕНО: null вместо '0'
+        subline: proc.subline || null, // ИЗМЕНЕНО: null вместо 1
         quantity: proc.quantity || 1,
         start_time: proc.start_time || null,
         end_time: proc.end_time || null,
@@ -208,17 +263,31 @@ watch(
           const product = productsStore.getProductById(order.product)
           selectedCustomerId.value = product?.customer || null
 
-          // Проверить, что текущий заказ подходит под фильтр линии
-          // Если не подходит - сбросить выбор заказа
-          if (
-            product?.coating_data &&
-            !Object.prototype.hasOwnProperty.call(product.coating_data, proc.line)
-          ) {
-            form.value.order = null
+          // Здесь нужно использовать код линии для проверки в coating_data
+          if (proc.line) {
+            const lineCode = linesStore.getLineById(proc.line)?.code
+            if (
+              lineCode &&
+              product?.coating_data &&
+              !Object.prototype.hasOwnProperty.call(product.coating_data, lineCode)
+            ) {
+              form.value.order = null
+            }
           }
         }
       }
     } else {
+      // Сбросить форму при создании нового процесса
+      form.value = {
+        order: null,
+        line: null, // ИЗМЕНЕНО: null вместо '0'
+        subline: null, // ИЗМЕНЕНО: null вместо 1
+        quantity: 1,
+        start_time: null,
+        end_time: null,
+        line_display: undefined,
+        worker: null,
+      }
       selectedCustomerId.value = null
     }
   },
@@ -242,11 +311,19 @@ function save() {
     alert('Выберите заказ')
     return
   }
+  if (!form.value.line) {
+    alert('Выберите линию покрытия')
+    return
+  }
+  if (!form.value.subline) {
+    alert('Выберите ванну')
+    return
+  }
 
   const saveData: Omit<Process, 'id'> & { id?: number } = {
     order: form.value.order,
-    line: form.value.line,
-    subline: form.value.subline,
+    line: form.value.line as number, // Добавить as number
+    subline: form.value.subline as number, // Добавить as number
     quantity: form.value.quantity,
     start_time: form.value.start_time,
     end_time: form.value.end_time,
@@ -265,7 +342,7 @@ function cancel() {
 </script>
 
 <template>
-  <div v-if="show" class="modal-overlay" @click="cancel">
+  <div v-if="show" class="modal-overlay">
     <div class="modal" @click.stop>
       <h2 class="modal-title">
         {{ props.process ? '✏️ Редактировать процесс' : '➕ Добавить процесс' }}
@@ -306,9 +383,10 @@ function cancel() {
             v-model="form.line"
             :disabled="!!props.process"
             required
-            @change="form.order = null"
+            @change="((form.order = null), (form.subline = null))"
           >
-            <option v-for="line in lines" :key="line.code" :value="line.code">
+            <option disabled :value="null">Выберите линию</option>
+            <option v-for="line in linesStore.activeLines" :key="line.id" :value="line.id">
               {{ line.name }}
             </option>
           </select>
@@ -319,14 +397,15 @@ function cancel() {
 
         <!-- 4. Номер ванны -->
         <div class="form-group">
-          <label for="subline">Номер ванны</label>
-          <select id="subline" v-model="form.subline" required>
+          <label for="subline">Ванна</label>
+          <select id="subline" v-model="form.subline" required :disabled="!form.line">
+            <option disabled :value="null">Выберите ванну</option>
             <option
-              v-for="sub in lines.find((l: any) => l.code === form.line)?.sublines || []"
-              :key="sub"
-              :value="sub"
+              v-for="sub in form.line ? linesStore.getSublinesByLine(form.line) : []"
+              :key="sub.id"
+              :value="sub.id"
             >
-              №{{ sub }}
+              {{ sub.name || `Ванна №${sub.number}` }}
             </option>
           </select>
         </div>
@@ -359,23 +438,25 @@ function cancel() {
         <div class="form-row">
           <div class="form-group">
             <label for="start_time">Время начала</label>
-            <input
+            <!-- <input
               id="start_time"
               v-model="startTimeForInput"
               type="datetime-local"
               class="time-input"
-            />
+            /> -->
+            <VueDatePicker v-model="startTime" placeholder="Выберите время" time-picker />
             <div class="field-hint">Необязательно</div>
           </div>
 
           <div class="form-group">
             <label for="end_time">Время окончания</label>
-            <input
+            <!-- <input
               id="end_time"
               v-model="endTimeForInput"
               type="datetime-local"
               class="time-input"
-            />
+            /> -->
+            <VueDatePicker v-model="endTime" placeholder="Выберите время" time-picker />
             <div class="field-hint">Необязательно</div>
           </div>
         </div>

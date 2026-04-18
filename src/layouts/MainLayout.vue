@@ -6,6 +6,9 @@ import { useRouter } from 'vue-router'
 import { useCustomersStore } from '@/stores/customers'
 import { useProductsStore } from '@/stores/products'
 
+import { useNotificationsStore } from '@/stores/notifications'
+const notifications = useNotificationsStore()
+
 const authStore = useAuthStore()
 const router = useRouter()
 
@@ -17,6 +20,7 @@ onMounted(async () => {
   try {
     await customersStore.fetchCustomers()
     await productsStore.fetchProducts()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (err: any) {
     if (err?.status === 401) {
       router.push('/login')
@@ -73,6 +77,10 @@ const navItems = authStore.user
 //   { title: 'Сотрудники', icon: '🧑‍🤝‍🧑', value: 'workers', to: '/workers' },
 //   // { title: 'Calendar', icon: '📅', value: 'calendar', to: '/calendar' },
 // ]
+
+const alert = () => {
+  notifications.info('Рекомендуется заменить раствор в ванне №2')
+}
 </script>
 
 <template>
@@ -94,7 +102,7 @@ const navItems = authStore.user
           <div class="logo">Химникель ERP</div>
         </div>
         <div class="topbar-right">
-          <button class="settings-btn">⚙️</button>
+          <button @click="alert" class="settings-btn">⚙️</button>
           <div class="user-info">
             <img src="https://randomuser.me/api/portraits/men/85.jpg" alt="User" class="avatar" />
             <button @click="handleLogout" class="logout-btn">Logout</button>
@@ -228,6 +236,33 @@ const navItems = authStore.user
   font-size: 0.875rem;
   color: #94a3b8;
   background-color: #f8fafc;
+}
+/* Маленький ноут */
+@media (min-width: 1024px) and (max-width: 1370px) and (orientation: landscape) {
+  .sidebar {
+    width: 32px;
+    padding: 0;
+  }
+  .main-content {
+    padding: 0;
+  }
+  .footer {
+    padding: 0;
+  }
+}
+
+/* Планшеты в ландшафтной ориентации */
+@media (min-width: 768px) and (max-width: 1024px) and (orientation: landscape) {
+  .sidebar {
+    width: 32px;
+    padding: 0;
+  }
+  .main-content {
+    padding: 0;
+  }
+  .footer {
+    padding: 0;
+  }
 }
 
 /*  */

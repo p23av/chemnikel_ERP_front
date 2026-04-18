@@ -142,8 +142,8 @@ function handleDelete(event: Event) {
 <style scoped>
 .process-card {
   position: absolute;
-  left: 2px;
-  right: 2px;
+  /* left: 2px; */
+  /* right: 2px; */
   border-radius: 4px;
   color: #fff;
   font-size: 0.7rem;
@@ -154,6 +154,8 @@ function handleDelete(event: Event) {
   transition: transform 0.15s;
   border: 1px solid rgba(255, 255, 255, 0.2);
   min-height: 80px;
+  z-index: 99;
+  width: 100%;
 }
 
 .process-card:hover {

@@ -13,14 +13,15 @@
     "format": "prettier --write src/"
   },
   "dependencies": {
+    "@vuepic/vue-datepicker": "^12.1.0",
     "ofetch": "^1.4.1",
     "pinia": "^3.0.1",
     "sass": "^1.87.0",
     "sass-loader": "^13.3.3",
     "vite-plugin-vuetify": "^2.1.1",
     "vue": "^3.5.13",
-    "vue-router": "^4.5.0",
-    "vuetify": "^3.8.4"
+    "vue-datepicker-next": "^1.0.3",
+    "vue-router": "^4.5.0"
   },
   "devDependencies": {
     "@tsconfig/node22": "^22.0.1",

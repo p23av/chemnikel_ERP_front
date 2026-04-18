@@ -7,7 +7,9 @@ import { useAuthStore } from '@/stores/auth'
 import App from './App.vue'
 import router from './router'
 
-import { vuetify } from './plugins/vuetify'
+import { VueDatePicker } from '@vuepic/vue-datepicker'
+import '@vuepic/vue-datepicker/dist/main.css'
+// import { vuetify } from './plugins/vuetify'
 
 /** LAYOUTS */
 import MainLayout from '@/layouts/MainLayout.vue'
@@ -17,10 +19,11 @@ const app = createApp(App)
 
 app.use(createPinia())
 app.use(router)
-app.use(vuetify)
+// app.use(vuetify)
 
 app.component('MainLayout', MainLayout)
 app.component('AuthLayout', AuthLayout)
+app.component('VueDatePicker', VueDatePicker)
 
 const authStore = useAuthStore()
 authStore.restoreToken() // восстановление токена до первых запросов

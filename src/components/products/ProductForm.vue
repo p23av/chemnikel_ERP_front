@@ -1,5 +1,8 @@
 <script setup lang="ts">
-import { ref, watch, defineEmits, defineProps } from 'vue'
+import { ref, watch } from 'vue'
+
+import { useLinesStore } from '@/stores/lines'
+const linesStore = useLinesStore()
 
 interface Product {
   id: number
@@ -10,13 +13,6 @@ interface Product {
   customer: number
   is_active?: boolean
 }
-
-// Справочник материалов покрытий
-const coatingMaterials = [
-  { id: '0', name: 'никель', code: 'Н' },
-  { id: '1', name: 'медь', code: 'М' },
-  { id: '2', name: 'олово-висмут', code: 'О-Ви' },
-]
 
 const props = defineProps<{
   modelValue: boolean
@@ -72,6 +68,14 @@ watch(
   },
   { immediate: true },
 )
+watch(
+  () => props.modelValue,
+  async (val) => {
+    if (val && linesStore.lines.length === 0) {
+      await linesStore.init()
+    }
+  },
+)
 
 function addCoating() {
   coatingLayers.value.push({ materialId: '', thickness: '' })
@@ -116,7 +120,7 @@ function closeModal() {
 </script>
 
 <template>
-  <div v-if="modelValue" class="modal-overlay" @click="closeModal">
+  <div v-if="modelValue" class="modal-overlay">
     <div class="modal" @click.stop>
       <h2 class="modal-title">
         {{ product ? '✏️ Редактировать деталь' : '➕ Добавить деталь' }}
@@ -164,12 +168,8 @@ function closeModal() {
             <div v-for="(layer, index) in coatingLayers" :key="index" class="coating-row">
               <select v-model="layer.materialId" required>
                 <option disabled value="">Выберите покрытие</option>
-                <option
-                  v-for="material in coatingMaterials"
-                  :key="material.id"
-                  :value="material.id"
-                >
-                  {{ material.name }} ({{ material.code }})
+                <option v-for="line in linesStore.activeLines" :key="line.id" :value="line.code">
+                  {{ line.name }} ({{ line.code }})
                 </option>
               </select>
               <input v-model="layer.thickness" type="text" placeholder="Толщина" required />

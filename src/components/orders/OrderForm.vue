@@ -81,7 +81,7 @@ function closeModal() {
 </script>
 
 <template>
-  <div v-if="dialog" class="modal-overlay" @click="closeModal">
+  <div v-if="dialog" class="modal-overlay">
     <div class="modal" @click.stop>
       <h2 class="modal-title">
         {{ props.order ? '✏️ Редактировать заказ' : '➕ Новый заказ' }}

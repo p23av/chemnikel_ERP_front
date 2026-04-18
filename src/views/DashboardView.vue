@@ -1,76 +1,41 @@
 <script lang="ts" setup>
 import { ref, computed, type Ref, onMounted } from 'vue'
-// import { useAuthStore } from '@/stores/auth'
 import { useCustomersStore } from '@/stores/customers'
 import { useProductsStore } from '@/stores/products'
-import api from '@/plugins/ofetch'
+import { useDialog } from '@/composables/useDialog'
+import { useLinesStore } from '@/stores/lines'
 import type { Customer } from '@/stores/customers'
 import type { Product } from '@/stores/products'
 
+import api from '@/plugins/ofetch'
+
 import CustomerForm from '@/components/customers/CustomerForm.vue'
 import ProductForm from '@/components/products/ProductForm.vue'
-// const authStore = useAuthStore()
 
 const customersStore = useCustomersStore()
 const productsStore = useProductsStore()
+const linesStore = useLinesStore()
+
+// Получаем композитаблы для диалогов
+const { confirm } = useDialog()
 
 // Загружаем данные при монтировании компонента
 onMounted(async () => {
   await customersStore.fetchCustomers()
   await productsStore.fetchProducts()
+  await linesStore.init()
 })
 
 const customers = computed(() => customersStore.customers)
 const products = computed(() => productsStore.products)
-// const products = [
-//   {
-//     id: 1,
-//     name: 'Корпус МВ',
-//     material: 'Алюминий',
-//     surface_area: 28,
-//     coating: 'Н12',
-//     customer: 5, // Заказчик 1
-//   },
-//   {
-//     id: 2,
-//     name: '10.001',
-//     material: 'Алюминий',
-//     surface_area: 0.6,
-//     coating: 'Н6.М3.О-Ви(99,8)9',
-//     customer: 2, // Заказчик 2
-//   },
-//   {
-//     id: 3,
-//     name: 'Кронштейн',
-//     material: 'Сталь',
-//     surface_area: 6,
-//     coating: 'Н9',
-//     customer: 3, // Заказчик 3
-//   },
-//   {
-//     id: 4,
-//     name: 'Втулка',
-//     material: 'Латунь',
-//     surface_area: 2,
-//     coating: 'Н6.М3',
-//     customer: 6, // Заказчик 4
-//   },
-// ]
 
 // Функция для форматирования покрытия из JSON
 const formatCoating = (coatingData: unknown) => {
   if (!coatingData || typeof coatingData !== 'object') return 'Без покрытия'
-
-  const materialNames: { [key: string]: string } = {
-    '0': 'Н', // Никель
-    '1': 'М', // Медь
-    '2': 'О-Ви', // Олово-висмут
-  }
-
   return Object.entries(coatingData)
-    .map(([materialId, thickness]) => {
-      const materialCode = materialNames[materialId] || `М${materialId}`
-      return `${materialCode}${thickness}`
+    .map(([materialCode, thickness]) => {
+      const shortName = linesStore.getShortNameByCode(materialCode)
+      return `${shortName}${thickness}`
     })
     .join('.')
 }
@@ -82,7 +47,6 @@ const showProductForm = ref(false)
 // Для редактирования
 const selectedCustomer: Ref<Customer | null> = ref(null)
 const selectedProduct: Ref<Product | null> = ref(null)
-// const selectedProduct = ref<number | null>(null)
 
 function addCustomer() {
   selectedCustomer.value = null
@@ -119,7 +83,12 @@ function saveProduct(data: Omit<Product, 'id'> & { id?: number }) {
 
 // Удаление заказчика
 const deleteCustomer = async (id: number) => {
-  if (!confirm('Вы уверены, что хотите удалить этого заказчика?')) return
+  const confirmed = await confirm(
+    'Вы действительно хотите удалить этого заказчика?',
+    'Подтверждение удаления',
+  )
+
+  if (!confirmed) return
 
   try {
     await api(`/customers/${id}/`, {
@@ -127,17 +96,21 @@ const deleteCustomer = async (id: number) => {
     })
   } catch (err) {
     if (err instanceof Error) {
-      error.value = err.message || 'Не удалось удалить заказчика'
       console.error('Ошибка при удалении заказчика:', err)
     } else {
       console.log('Неизвестная ошибка:', err)
     }
   }
 }
-const error = ref<string | null>(null)
+
 // Удаление продукта
 const deleteProduct = async (id: number) => {
-  if (!confirm('Вы уверены, что хотите удалить этого заказчика?')) return
+  const confirmed = await confirm(
+    'Вы действительно хотите удалить эту деталь?',
+    'Подтверждение удаления',
+  )
+
+  if (!confirmed) return
 
   try {
     await api(`/products/${id}/`, {
@@ -145,7 +118,6 @@ const deleteProduct = async (id: number) => {
     })
   } catch (err) {
     if (err instanceof Error) {
-      error.value = err.message || 'Не удалось удалить деталь'
       console.error('Ошибка при удалении детали:', err)
     } else {
       console.log('Неизвестная ошибка:', err)
@@ -153,89 +125,6 @@ const deleteProduct = async (id: number) => {
   }
 }
 </script>
-
-<!-- <template>
-  <div class="manager-dashboard">
-    <header class="dashboard-header">
-      <h2>Панель управления менеджера</h2>
-    </header>
-
-    <div class="content-section">
-      <div class="section-header">
-        <h2>Список заказчиков</h2>
-        <button @click="customersStore.fetchCustomers()" class="refresh-btn">
-          Обновить список
-        </button>
-      </div>
-
-      <div v-if="isLoading" class="loading-indicator">Загрузка данных...</div>
-
-      <div v-else-if="error" class="error-message">Ошибка при загрузке данных: {{ error }}</div>
-
-      <div v-else>
-        <v-table class="customers-table" height="300px" fixed-header>
-          <thead>
-            <tr>
-              <th class="text-left">ID</th>
-              <th class="text-right">Название</th>
-              <th>Контактное лицо</th>
-              <th>Телефон</th>
-              <th>Email</th>
-              <th>Действия</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="customer in customers" :key="customer.id">
-              <td>{{ customer.id }}</td>
-              <td>{{ customer.name }}</td>
-              <td>{{ customer.contact_person }}</td>
-              <td>{{ customer.phone }}</td>
-              <td>{{ customer.email }}</td>
-              <td>
-                <button @click="editCustomer(customer.id)" class="action-btn edit-btn">
-                  Редактировать
-                </button>
-                <button @click="deleteCustomer(customer.id)" class="action-btn delete-btn">
-                  Удалить
-                </button>
-              </td>
-            </tr>
-          </tbody>
-        </v-table>
-
-        <div class="add-customer">
-          <button @click="showAddForm = true" class="add-btn">Добавить нового заказчика</button>
-        </div>
-
-        <div v-if="showAddForm" class="customer-form">
-          <h3>Добавить заказчика</h3>
-          <form @submit.prevent="addCustomer">
-            <div class="form-group">
-              <label>Название:</label>
-              <input v-model="newCustomer.name" required />
-            </div>
-            <div class="form-group">
-              <label>Контактное лицо:</label>
-              <input v-model="newCustomer.contact_person" required />
-            </div>
-            <div class="form-group">
-              <label>Телефон:</label>
-              <input v-model="newCustomer.phone" type="tel" required />
-            </div>
-            <div class="form-group">
-              <label>Email:</label>
-              <input v-model="newCustomer.email" type="email" required />
-            </div>
-            <div class="form-actions">
-              <button type="submit" class="submit-btn">Сохранить</button>
-              <button type="button" @click="showAddForm = false" class="cancel-btn">Отмена</button>
-            </div>
-          </form>
-        </div>
-      </div>
-    </div>
-  </div>
-</template> -->
 
 <template>
   <div class="customers-details-layout">
@@ -249,45 +138,45 @@ const deleteProduct = async (id: number) => {
         </div>
       </header>
 
-      <table class="data-table">
-        <thead>
-          <tr>
-            <!-- <th>ID ⬍</th> -->
-            <th>Название ⬍</th>
-            <th>ИНН ⬍</th>
-            <th>Контактное лицо ⬍</th>
-            <th>Телефон ⬍</th>
-            <th>Email ⬍</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="customer in customers" :key="customer.id">
-            <!-- <td>{{ customer.id }}</td> -->
-            <td>{{ customer.name }}</td>
-            <td>{{ customer.tax_id }}</td>
-            <td>{{ customer.contact_person }}</td>
-            <td>{{ customer.phone }}</td>
-            <td>{{ customer.email }}</td>
-            <td>
-              <button
-                @click="editCustomer(customer.id)"
-                class="action-btn edit-btn"
-                title="Редактировать"
-              >
-                ✏️
-              </button>
-              <button
-                @click="deleteCustomer(customer.id)"
-                class="action-btn delete-btn"
-                title="Удалить"
-              >
-                🗑️
-              </button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      <div class="data-table-wrapper">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Название ⬍</th>
+              <th>ИНН ⬍</th>
+              <th>Контактное лицо ⬍</th>
+              <th>Телефон ⬍</th>
+              <th>Email ⬍</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="customer in customers" :key="customer.id">
+              <td>{{ customer.name }}</td>
+              <td>{{ customer.tax_id }}</td>
+              <td>{{ customer.contact_person }}</td>
+              <td>{{ customer.phone }}</td>
+              <td>{{ customer.email }}</td>
+              <td>
+                <button
+                  @click="editCustomer(customer.id)"
+                  class="action-btn edit-btn"
+                  title="Редактировать"
+                >
+                  ✏️
+                </button>
+                <button
+                  @click="deleteCustomer(customer.id)"
+                  class="action-btn delete-btn"
+                  title="Удалить"
+                >
+                  🗑️
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </section>
 
     <!-- Правая колонка: детали -->
@@ -300,43 +189,45 @@ const deleteProduct = async (id: number) => {
         </div>
       </header>
 
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th>Название ⬍</th>
-            <th>Материал ⬍</th>
-            <th>Площадь поверхности ⬍</th>
-            <th>Покрытие ⬍</th>
-            <th>Заказчик ⬍</th>
-            <th>Действия</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="product in products" :key="product.id">
-            <td>{{ product.name }}</td>
-            <td>{{ product.material }}</td>
-            <td>{{ product.surface_area }}</td>
-            <td>{{ formatCoating(product.coating_data) }}</td>
-            <td>{{ customersStore.getCustomerById(product.customer)?.name }}</td>
-            <td>
-              <button
-                @click="editProduct(product.id)"
-                class="action-btn edit-btn"
-                title="Редактировать"
-              >
-                ✏️
-              </button>
-              <button
-                @click="deleteProduct(product.id)"
-                class="action-btn delete-btn"
-                title="Удалить"
-              >
-                🗑️
-              </button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      <div class="data-table-wrapper">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Название ⬍</th>
+              <th>Материал ⬍</th>
+              <th>Площадь поверхности ⬍</th>
+              <th>Покрытие ⬍</th>
+              <th>Заказчик ⬍</th>
+              <th>Действия</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="product in products" :key="product.id">
+              <td>{{ product.name }}</td>
+              <td>{{ product.material }}</td>
+              <td>{{ product.surface_area }}</td>
+              <td>{{ formatCoating(product.coating_data) }}</td>
+              <td>{{ customersStore.getCustomerById(product.customer)?.name }}</td>
+              <td>
+                <button
+                  @click="editProduct(product.id)"
+                  class="action-btn edit-btn"
+                  title="Редактировать"
+                >
+                  ✏️
+                </button>
+                <button
+                  @click="deleteProduct(product.id)"
+                  class="action-btn delete-btn"
+                  title="Удалить"
+                >
+                  🗑️
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </section>
     <!-- Модалки -->
     <CustomerForm v-model="showCustomerForm" :customer="selectedCustomer" @save="saveCustomer" />
@@ -350,6 +241,13 @@ const deleteProduct = async (id: number) => {
 </template>
 
 <style scoped>
+.data-table-wrapper {
+  overflow-y: auto;
+}
+.data-table-wrapper thead {
+  position: sticky;
+  top: 0;
+}
 .customers-details-layout {
   display: grid;
   grid-template-columns: 1fr 1fr;

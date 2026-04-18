@@ -3,6 +3,9 @@ import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { RouterView } from 'vue-router'
 
+import NotificationContainer from '@/components/ui/NotificationContainer.vue'
+import BaseDialog from '@/components/ui/BaseDialog.vue'
+
 const route = useRoute()
 
 // Определяем макет (layout), если он задан в meta, иначе используем AuthLayout по умолчанию
@@ -15,6 +18,9 @@ const layout = computed(() => {
   <!-- Без Vuetify: больше нет <v-app>, просто обёртка с layout -->
   <component :is="layout">
     <RouterView />
+    <!-- Система уведомлений -->
+    <NotificationContainer />
+    <BaseDialog />
   </component>
 </template>
 

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { defineStore } from 'pinia'
 import api from '@/plugins/ofetch'
 
@@ -5,61 +6,21 @@ export interface Process {
   id: number
   order: number
   quantity: number
-  line: string // '0' | '1' | '2'
-  subline: number // 1, 2, 3...
+  line: number // ИЗМЕНЕНО: теперь число (ID линии)
+  subline: number // ИЗМЕНЕНО: теперь число (ID ванны)
   start_time: string | null
   end_time: string | null
   created_at: string
   worker: number | null
-  line_display?: string // Для отображения названия линии
+  // Дополнительные поля, которые приходят с бэка
+  line_name?: string
+  line_code?: string
+  line_display?: string
+  subline_number?: number
+  subline_name?: string
 }
 
 export const useProcessesStore = defineStore('processes', {
-  // state: () => ({
-  //   processes: [
-  //     {
-  //       id: 1,
-  //       order: 1,
-  //       line: 'nickel',
-  //       subline: '№1',
-  //       quantity: 20,
-  //       start_time: '2025-10-14T08:00:00',
-  //       end_time: '2025-10-14T10:00:00',
-  //       status: 'done',
-  //     },
-  //     {
-  //       id: 2,
-  //       order: 1,
-  //       line: 'nickel',
-  //       subline: '№2',
-  //       quantity: 15,
-  //       start_time: '2025-10-14T09:00:00',
-  //       end_time: '2025-10-14T11:00:00',
-  //       status: 'done',
-  //     },
-  //     {
-  //       id: 3,
-  //       order: 2,
-  //       line: 'copper',
-  //       subline: '№1',
-  //       quantity: 300,
-  //       start_time: '2025-10-14T10:00:00',
-  //       end_time: '2025-10-14T13:00:00',
-  //       status: 'in_progress',
-  //     },
-  //     {
-  //       id: 4,
-  //       order: 1,
-  //       line: 'ovi',
-  //       subline: '№1',
-  //       quantity: 25,
-  //       start_time: '2025-10-14T12:00:00',
-  //       end_time: '2025-10-14T14:00:00',
-  //       status: 'in_progress',
-  //     },
-  //   ] as Process[],
-  // }),
-
   state: () => ({
     processes: [] as Process[],
     isLoading: false,
@@ -87,7 +48,12 @@ export const useProcessesStore = defineStore('processes', {
       }
     },
 
-    async createProcess(process: Omit<Process, 'id'>) {
+    async createProcess(
+      process: Omit<
+        Process,
+        'id' | 'line_name' | 'line_code' | 'line_display' | 'subline_number' | 'subline_name'
+      >,
+    ) {
       try {
         const newProcess = await api('/processes/', {
           method: 'POST',

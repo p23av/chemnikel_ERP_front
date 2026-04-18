@@ -1,22 +1,35 @@
+<!-- eslint-disable @typescript-eslint/no-explicit-any -->
 <script lang="ts" setup>
 import { ref, computed, type Ref, onMounted, watch } from 'vue'
 import { useOrdersStore } from '@/stores/orders'
 import { useProcessesStore } from '@/stores/processes'
 import { useProductsStore } from '@/stores/products'
 import { useCustomersStore } from '@/stores/customers'
+import { useCorrectionsStore } from '@/stores/corrections'
+import { useBoilingsStore } from '@/stores/boilings'
+import { useLinesStore } from '@/stores/lines'
 
 import type { Order } from '@/stores/orders'
 import type { Process } from '@/stores/processes'
+import type { Correction } from '@/stores/corrections'
+import type { Boiling } from '@/stores/boilings'
 
 import OrderForm from '@/components/orders/OrderForm.vue'
 import ProcessCalendar from '@/components/processes/ProcessCalendar.vue'
 import ProcessForm from '@/components/processes/ProcessForm.vue'
+import CorrectionForm from '@/components/processes/CorrectionForm.vue'
+import BoilingForm from '@/components/processes/BoilingForm.vue'
+
+const selectedProcessDate = ref<Date>(resetTime(new Date()))
 
 // хранилища
 const ordersStore = useOrdersStore()
 const processesStore = useProcessesStore()
 const productsStore = useProductsStore()
 const customerStore = useCustomersStore()
+const correctionsStore = useCorrectionsStore()
+const boilingsStore = useBoilingsStore()
+const linesStore = useLinesStore()
 
 // состояния загрузки
 const isLoading = ref(true)
@@ -27,17 +40,38 @@ onMounted(async () => {
   await loadInitialData()
   console.log('Прогресс заказов:', debugProgress.value)
 })
+
+// Функция для сброса времени (только дата)
+function resetTime(date: Date): Date {
+  const newDate = new Date(date)
+  newDate.setHours(0, 0, 0, 0)
+  return newDate
+}
+
 async function loadInitialData() {
   isLoading.value = true
   loadError.value = null
 
   try {
     // Загружаем все данные параллельно
+    const startOfMonth = new Date(
+      selectedProcessDate.value.getFullYear(),
+      selectedProcessDate.value.getMonth(),
+      1,
+    )
+    const endOfMonth = new Date(
+      selectedProcessDate.value.getFullYear(),
+      selectedProcessDate.value.getMonth() + 1,
+      0,
+    )
     await Promise.all([
       ordersStore.fetchOrders(),
       processesStore.fetchProcesses(),
       productsStore.fetchProducts(),
+      correctionsStore.fetchCorrections(startOfMonth, endOfMonth),
+      boilingsStore.fetchBoilings(startOfMonth, endOfMonth),
     ])
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (error: any) {
     loadError.value = error.message || 'Ошибка загрузки данных'
     console.error('Ошибка загрузки:', error)
@@ -45,6 +79,8 @@ async function loadInitialData() {
     isLoading.value = false
   }
 }
+
+const boilings = computed(() => boilingsStore.boilings)
 
 // данные
 const orders = computed(() => {
@@ -62,20 +98,106 @@ const orders = computed(() => {
 const selectedOrder: Ref<Order | null> = ref(null)
 // Все процессы (без фильтрации по заказу)
 const allProcesses = computed(() => processesStore.processes)
-
-const lines = [
-  { name: 'Никель', code: '0', sublines: [1, 2] },
-  { name: 'Медь', code: '1', sublines: [1] },
-  { name: 'О-Ви', code: '2', sublines: [1] },
-]
+const allCorrections = computed(() => correctionsStore.corrections)
 
 // модалки
 const showOrderForm = ref(false)
 const showProcessForm = ref(false)
+const showCorrectionForm = ref(false)
+const showBoilingForm = ref(false)
+
+// Данные для формы коррекции
+const correctionFormData = ref({
+  line: null as number | null,
+  subline: 0,
+  date: new Date(),
+})
+const boilingFormData = ref({
+  line: null as number | null,
+  subline: null as number | null,
+  date: new Date(),
+})
+
+// Обработчик добавления коррекции из календаря
+const handleAddCorrection = (payload: { line: number; subline: number; date: Date }) => {
+  // Для новой коррекции очищаем editingCorrection
+  editingCorrection.value = null
+  correctionFormData.value = {
+    line: payload.line,
+    subline: payload.subline,
+    date: payload.date,
+  }
+
+  showCorrectionForm.value = true
+}
+const handleAddBoiling = (payload: { line: number; subline: number; date: Date }) => {
+  editingBoiling.value = null
+  boilingFormData.value = {
+    line: payload.line,
+    subline: payload.subline,
+    date: payload.date,
+  }
+  showBoilingForm.value = true
+}
+
+// Сохранение коррекции
+const saveCorrection = async (correctionData: Correction) => {
+  try {
+    console.log('💾 Сохранение коррекции из формы:', correctionData) // <-- ДОБАВЬТЕ
+
+    const saveData = {
+      amount: correctionData.amount,
+      line: correctionData.line,
+      subline: correctionData.subline,
+      correction_time: correctionData.correction_time,
+      worker: correctionData.worker,
+    }
+
+    console.log('📤 Данные для отправки:', saveData) // <-- ДОБАВЬТЕ
+
+    if (correctionData.id) {
+      await correctionsStore.updateCorrection(correctionData.id, saveData)
+    } else {
+      await correctionsStore.createCorrection(saveData)
+    }
+
+    showCorrectionForm.value = false
+    editingCorrection.value = null
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } catch (error: any) {
+    console.error('Ошибка при сохранении коррекции:', error)
+    alert(error.message || 'Не удалось сохранить коррекцию')
+  }
+}
+const saveBoiling = async (boilingData: Boiling) => {
+  try {
+    const saveData = {
+      subline: boilingData.subline,
+      date: boilingData.date,
+      start_time: boilingData.start_time,
+      end_time: boilingData.end_time,
+      worker: boilingData.worker,
+    }
+
+    if (boilingData.id) {
+      await boilingsStore.updateBoiling(boilingData.id, saveData)
+    } else {
+      await boilingsStore.createBoiling(saveData)
+    }
+
+    showBoilingForm.value = false
+    editingBoiling.value = null
+  } catch (error: any) {
+    console.error('Ошибка при сохранении кипения:', error)
+    alert(error.message || 'Не удалось сохранить запись о кипении')
+  }
+}
 
 // редактируемые объекты
 const editingOrder: Ref<Order | null> = ref(null)
 const editingProcess: Ref<Process | null> = ref(null)
+const editingCorrection: Ref<Correction | null> = ref(null)
+const editingBoiling: Ref<Boiling | null> = ref(null)
 
 // ======== ВЫЧИСЛЯЕМЫЕ ДАННЫЕ ========
 
@@ -125,6 +247,38 @@ const completedOrders = computed(() => {
 //   return completion
 // })
 
+// Обработчик редактирования коррекции
+const handleEditCorrection = async (correction: Correction) => {
+  editingCorrection.value = correction
+  showCorrectionForm.value = true
+}
+const handleEditBoiling = (boiling: Boiling) => {
+  editingBoiling.value = boiling
+  showBoilingForm.value = true
+}
+
+// Обработчик удаления коррекции
+const handleDeleteCorrection = async (id: number) => {
+  if (!confirm('Удалить эту коррекцию?')) return
+
+  try {
+    await correctionsStore.deleteCorrection(id)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } catch (error: any) {
+    console.error('Ошибка при удалении коррекции:', error)
+    alert(error.message || 'Не удалось удалить коррекцию')
+  }
+}
+const handleDeleteBoiling = async (id: number) => {
+  if (!confirm('Удалить запись о кипении?')) return
+  try {
+    await boilingsStore.deleteBoiling(id)
+  } catch (error: any) {
+    console.error('Ошибка при удалении кипения:', error)
+    alert(error.message || 'Не удалось удалить запись о кипении')
+  }
+}
+
 // ======== Заказы ========
 function addOrder() {
   editingOrder.value = null
@@ -156,8 +310,8 @@ function saveOrder(data: Omit<Order, 'id'> & { id?: number }) {
 }
 
 // ======== Процессы ========
-function addProcess(payload: { line: string; subline: number }) {
-  console.log('Add process called:', payload)
+function addProcess(payload: { line: number; subline: number }) {
+  // console.log('Add process called:', payload)
 
   // Процессы можно добавлять без выбора заказа
   editingProcess.value = {
@@ -169,9 +323,9 @@ function addProcess(payload: { line: string; subline: number }) {
     end_time: null,
   } as unknown as Process
 
-  console.log('Setting editingProcess:', editingProcess.value)
+  // console.log('Setting editingProcess:', editingProcess.value)
   showProcessForm.value = true
-  console.log('Setting showProcessForm to true')
+  // console.log('Setting showProcessForm to true')
 }
 
 function editProcess(id: number) {
@@ -203,6 +357,7 @@ async function saveProcess(data: Omit<Process, 'id'> & { id?: number }) {
     // }
 
     showProcessForm.value = false
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (err: any) {
     console.error('Ошибка при сохранении процесса:', err)
     alert(err.message || 'Не удалось сохранить процесс')
@@ -212,10 +367,10 @@ async function saveProcess(data: Omit<Process, 'id'> & { id?: number }) {
 // ======== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ========
 
 // Получаем название продукта для заказа
-const getProductName = (productId: number) => {
-  const product = productsStore.getProductById(productId)
-  return product ? product.name : `Продукт #${productId}`
-}
+// const getProductName = (productId: number) => {
+//   const product = productsStore.getProductById(productId)
+//   return product ? product.name : `Продукт #${productId}`
+// }
 
 // Получаем статус заказа
 // const getOrderStatus = (status: number) => {
@@ -223,26 +378,26 @@ const getProductName = (productId: number) => {
 // }
 
 // Вычисляем статусы слоев для каждого заказа
-const orderLayerStatus = computed(() => {
-  const statusMap: Record<number, { [layer: string]: { done: number; total: number } }> = {}
+// const orderLayerStatus = computed(() => {
+//   const statusMap: Record<number, { [layer: string]: { done: number; total: number } }> = {}
 
-  orders.value.forEach((order) => {
-    const processesByOrder = allProcesses.value.filter((p) => p.order === order.id)
-    const layerCounts: Record<string, { done: number; total: number }> = {}
+//   orders.value.forEach((order) => {
+//     const processesByOrder = allProcesses.value.filter((p) => p.order === order.id)
+//     const layerCounts: Record<string, { done: number; total: number }> = {}
 
-    processesByOrder.forEach((p) => {
-      if (!layerCounts[p.line_display || p.line]) {
-        layerCounts[p.line_display || p.line] = { done: 0, total: 0 }
-      }
-      layerCounts[p.line_display || p.line].total += p.quantity
-      if (p.end_time) layerCounts[p.line_display || p.line].done += p.quantity
-    })
+//     processesByOrder.forEach((p) => {
+//       if (!layerCounts[p.line_display || p.line]) {
+//         layerCounts[p.line_display || p.line] = { done: 0, total: 0 }
+//       }
+//       layerCounts[p.line_display || p.line].total += p.quantity
+//       if (p.end_time) layerCounts[p.line_display || p.line].done += p.quantity
+//     })
 
-    statusMap[order.id] = layerCounts
-  })
+//     statusMap[order.id] = layerCounts
+//   })
 
-  return statusMap
-})
+//   return statusMap
+// })
 
 // async function checkOrderCompletion(orderId: number) {
 //   const order = ordersStore.getOrderById(orderId)
@@ -267,8 +422,8 @@ const orderLayerStatus = computed(() => {
 // }
 
 // Обновление данных
-function refreshData() {
-  loadInitialData()
+async function refreshData() {
+  await loadInitialData()
 }
 
 // Вычисляем прогресс по покрытиям для каждого заказа
@@ -315,9 +470,9 @@ const orderCoatingProgress = computed(() => {
 })
 
 // Получаем название покрытия по коду линии
-const getCoatingName = (lineCode: string) => {
-  const line = lines.find((l) => l.code === lineCode)
-  return line ? line.name : `Покрытие ${lineCode}`
+const getCoatingName = (lineId: number) => {
+  const line = linesStore.getLineById(lineId)
+  return line?.name || `Покрытие ${lineId}`
 }
 
 // Получаем общий прогресс заказа
@@ -358,21 +513,17 @@ const getTotalProgress = (orderId: number) => {
 const formatCoating = (coatingData: unknown) => {
   if (!coatingData || typeof coatingData !== 'object') return 'Без покрытия'
 
-  const materialNames: { [key: string]: string } = {
-    '0': 'Н', // Никель
-    '1': 'М', // Медь
-    '2': 'О-Ви', // Олово-висмут
-  }
-
   return Object.entries(coatingData)
-    .map(([materialId, thickness]) => {
-      const materialCode = materialNames[materialId] || `М${materialId}`
-      return `${materialCode}${thickness}`
+    .map(([materialCode, thickness]) => {
+      const line = linesStore.lines.find((l) => l.code === materialCode)
+      const shortName = line?.short_name || materialCode
+      return `${shortName}${thickness}`
     })
     .join('.')
 }
 
 // Переключение статуса заказа
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function toggleOrderStatus(order: any) {
   const newStatus = order.status === 0 ? 1 : 0
   const action = newStatus === 1 ? 'завершить' : 'вернуть в работу'
@@ -646,9 +797,19 @@ const debugProgress = computed(() => {
           <!-- Процессы отображаются всегда, без привязки к выбранному заказу -->
           <ProcessCalendar
             :processes="allProcesses"
+            :corrections="allCorrections"
+            :boilings="boilings"
+            :selected-date="selectedProcessDate"
+            @update:selected-date="selectedProcessDate = resetTime($event)"
             @add="addProcess"
+            @add-correction="handleAddCorrection"
+            @add-boiling="handleAddBoiling"
             @edit="editProcess"
             @delete="deleteProcess"
+            @edit-correction="handleEditCorrection"
+            @delete-correction="handleDeleteCorrection"
+            @edit-boiling="handleEditBoiling"
+            @delete-boiling="handleDeleteBoiling"
           />
         </div>
 
@@ -657,7 +818,20 @@ const debugProgress = computed(() => {
           v-model="showProcessForm"
           :process="editingProcess"
           :orders="orders"
+          :selected-date="selectedProcessDate"
           @save="saveProcess"
+        />
+        <CorrectionForm
+          v-model="showCorrectionForm"
+          :form-data="correctionFormData"
+          :correction="editingCorrection"
+          @save="saveCorrection"
+        />
+        <BoilingForm
+          v-model="showBoilingForm"
+          :form-data="boilingFormData"
+          :boiling="editingBoiling"
+          @save="saveBoiling"
         />
       </section>
       <!-- Модалка формы заказа -->
@@ -728,7 +902,7 @@ const debugProgress = computed(() => {
   background: #cbd5e1;
 }
 
-/* Остальные стили остаются без изменений */
+/* Основной лейаут */
 .orders-processes-layout {
   height: 100%;
   position: relative;
@@ -742,6 +916,7 @@ const debugProgress = computed(() => {
   height: 100%;
 }
 
+/* Панели */
 .panel {
   background: #fff;
   border-radius: 6px;
@@ -797,152 +972,6 @@ const debugProgress = computed(() => {
   flex: 1;
 }
 
-.order-product {
-  font-weight: 500;
-  color: #1e293b;
-  margin-bottom: 0.2rem;
-}
-
-.order-details {
-  font-size: 0.85rem;
-  color: #64748b;
-  margin-bottom: 0.2rem;
-}
-
-.order-date {
-  font-size: 0.8rem;
-  color: #94a3b8;
-}
-
-.order-actions {
-  display: flex;
-  gap: 0.3rem;
-  opacity: 0.7;
-  transition: opacity 0.2s;
-}
-
-.order-item:hover .order-actions {
-  opacity: 1;
-}
-
-.order-actions button {
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 0.25rem;
-  border-radius: 3px;
-}
-
-.order-actions button:hover {
-  background: #f1f5f9;
-}
-
-.add-btn {
-  background: #3b82f6;
-  color: #fff;
-  border: none;
-  border-radius: 4px;
-  padding: 0.4rem 0.8rem;
-  cursor: pointer;
-  font-size: 0.9rem;
-}
-
-.add-btn:hover {
-  background: #2563eb;
-}
-
-.processes-content {
-  flex: 1;
-  overflow: auto;
-}
-
-.empty-state {
-  padding: 2rem;
-  text-align: center;
-  color: #94a3b8;
-  font-style: italic;
-}
-
-/* Стили для прогресс-бара */
-.order-progress {
-  margin: 0.5rem 0;
-}
-
-.progress-bar {
-  width: 100%;
-  height: 8px;
-  background: #e2e8f0;
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.progress-fill {
-  height: 100%;
-  background: #10b981;
-  transition: width 0.3s ease;
-}
-
-.progress-text {
-  font-size: 0.8rem;
-  color: #64748b;
-  margin-top: 0.2rem;
-}
-
-/* Стили для завершенных заказов */
-.completed-title {
-  color: #94a3b8;
-  font-size: 0.9rem;
-  margin-top: 1rem;
-}
-
-.completed-item {
-  opacity: 0.7;
-}
-
-.completed-product {
-  color: #94a3b8;
-}
-
-.completed-details {
-  color: #94a3b8;
-}
-
-.completed-date {
-  color: #cbd5e1;
-}
-
-.order-progress-layers {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin-top: 0.3rem;
-}
-
-.layer-progress {
-  font-size: 0.75rem;
-  color: #475569;
-}
-
-.layer-bar {
-  width: 100%;
-  height: 6px;
-  background: #e2e8f0;
-  border-radius: 3px;
-  overflow: hidden;
-  margin-top: 1px;
-}
-
-.layer-fill {
-  height: 100%;
-  background: #3b82f6;
-  transition: width 0.3s ease;
-}
-
-.section-title {
-  margin-top: 8px;
-  margin-left: 32px;
-}
-
 .order-header {
   display: flex;
   align-items: center;
@@ -958,12 +987,30 @@ const debugProgress = computed(() => {
   padding: 0.2rem 0.5rem;
   border-radius: 4px;
   font-size: 0.8rem;
+  min-width: 40px;
 }
 
 .order-product {
   font-weight: 500;
   color: #1e293b;
   font-size: 0.9rem;
+  flex: 1;
+  min-width: 150px;
+}
+
+.customer-name {
+  font-size: 0.8rem;
+  color: #64748b;
+  font-weight: normal;
+}
+
+.order-coating {
+  color: #475569;
+  font-size: 0.8rem;
+  background: #f1f5f9;
+  padding: 0.2rem 0.4rem;
+  border-radius: 3px;
+  white-space: nowrap;
 }
 
 .order-quantity {
@@ -972,6 +1019,7 @@ const debugProgress = computed(() => {
   background: #e2e8f0;
   padding: 0.1rem 0.4rem;
   border-radius: 3px;
+  white-space: nowrap;
 }
 
 .total-progress {
@@ -1059,26 +1107,77 @@ const debugProgress = computed(() => {
   margin-top: 0.5rem;
 }
 
-/* Адаптивность */
-@media (max-width: 768px) {
-  .order-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.25rem;
-  }
+.order-actions {
+  display: flex;
+  gap: 0.3rem;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
 
-  .coating-item {
-    grid-template-columns: 1fr;
-    gap: 0.25rem;
-  }
+.order-item:hover .order-actions {
+  opacity: 1;
+}
 
-  .coating-stats {
-    text-align: left;
-  }
+.order-actions button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: 3px;
+}
+
+.order-actions button:hover {
+  background: #f1f5f9;
+}
+
+.add-btn {
+  background: #3b82f6;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 0.4rem 0.8rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.add-btn:hover {
+  background: #2563eb;
+}
+
+.processes-content {
+  flex: 1;
+  overflow: auto;
+}
+
+.empty-state {
+  padding: 2rem;
+  text-align: center;
+  color: #94a3b8;
+  font-style: italic;
+}
+
+/* Стили для завершенных заказов */
+.completed-title {
+  color: #94a3b8;
+  font-size: 0.9rem;
+  margin-top: 1rem;
+}
+
+.completed-item {
+  opacity: 0.7;
+}
+
+.completed-date {
+  color: #cbd5e1;
+}
+
+.section-title {
+  margin-top: 8px;
+  margin-left: 32px;
 }
 
 .orders-list li.completed-ready .order-item {
-  background: #d1fae5; /* светло-зеленый */
+  background: #d1fae5;
   border-left: 3px solid #10b981;
 }
 
@@ -1099,5 +1198,355 @@ const debugProgress = computed(() => {
 .return-btn:hover {
   background: #3b82f6;
   color: white;
+}
+
+/* ======== АДАПТИВНОСТЬ ДЛЯ ПЛАНШЕТОВ ======== */
+
+/* Мобильное/планшетное меню */
+.mobile-menu-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 999;
+  display: none;
+}
+
+.mobile-menu {
+  position: fixed;
+  top: 0;
+  left: -280px;
+  width: 280px;
+  height: 100%;
+  background: white;
+  box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+  transition: left 0.3s ease;
+  display: none;
+}
+
+.mobile-menu--open {
+  left: 0;
+}
+
+.mobile-menu-header {
+  display: flex;
+  align-items: center;
+  padding: 1rem;
+  border-bottom: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+
+.mobile-menu-close {
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  margin-right: 1rem;
+  cursor: pointer;
+}
+
+.mobile-menu-content {
+  padding: 1rem;
+}
+
+.mobile-menu-btn {
+  width: 100%;
+  padding: 0.8rem;
+  margin-bottom: 0.5rem;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  text-align: left;
+}
+
+.mobile-menu-btn:hover {
+  background: #2563eb;
+}
+
+/* Мобильные контролы */
+.mobile-controls {
+  display: none;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: white;
+  padding: 0.5rem;
+  border-bottom: 1px solid #e2e8f0;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.mobile-menu-btn {
+  background: #3b82f6;
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.mobile-refresh-btn {
+  background: #e2e8f0;
+  border: none;
+  padding: 0.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-left: 0.5rem;
+}
+
+/* Планшетная версия (768px - 1024px) */
+@media (max-width: 1024px) {
+  .orders-processes {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto;
+    gap: 4px;
+  }
+
+  .panel--orders {
+    grid-row: 1;
+    max-height: 50vh;
+  }
+
+  .panel--processes {
+    grid-row: 2;
+    max-height: 50vh;
+  }
+
+  .mobile-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .mobile-menu-overlay,
+  .mobile-menu {
+    display: block;
+  }
+
+  .header-actions--mobile {
+    display: none;
+  }
+
+  .add-btn--mobile {
+    display: none;
+  }
+
+  .order-header {
+    gap: 0.3rem;
+  }
+
+  .order-product {
+    font-size: 0.85rem;
+    min-width: 120px;
+  }
+
+  .customer-name {
+    display: block;
+    margin-top: 0.1rem;
+  }
+
+  .order-coating {
+    font-size: 0.75rem;
+    padding: 0.1rem 0.3rem;
+  }
+
+  .order-quantity {
+    font-size: 0.75rem;
+    padding: 0.1rem 0.3rem;
+  }
+
+  .coating-item {
+    grid-template-columns: auto auto;
+    gap: 0.3rem;
+  }
+
+  .coating-bar {
+    grid-column: 1 / -1;
+  }
+
+  .order-actions {
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+}
+
+/* Мобильная версия (до 768px) */
+@media (max-width: 768px) {
+  .orders-processes {
+    gap: 2px;
+  }
+
+  .panel-header {
+    padding: 0.5rem 0.75rem;
+  }
+
+  .order-item {
+    padding: 0.6rem 0.75rem;
+    flex-direction: column;
+  }
+
+  .order-actions {
+    flex-direction: row;
+    margin-top: 0.5rem;
+    justify-content: flex-end;
+    width: 100%;
+  }
+
+  .order-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+  }
+
+  .order-number {
+    align-self: flex-start;
+  }
+
+  .order-product {
+    min-width: 100%;
+  }
+
+  .total-progress {
+    padding: 0.4rem;
+  }
+
+  .progress-info {
+    font-size: 0.75rem;
+  }
+
+  .coating-progress {
+    margin: 0.3rem 0;
+  }
+
+  .coating-item {
+    grid-template-columns: 1fr auto;
+    gap: 0.25rem;
+  }
+
+  .coating-name {
+    min-width: 60px;
+    font-size: 0.7rem;
+  }
+
+  .coating-stats {
+    font-size: 0.7rem;
+    min-width: 50px;
+  }
+
+  .order-date {
+    font-size: 0.7rem;
+  }
+
+  .section-title {
+    margin-left: 16px;
+    font-size: 0.9rem;
+  }
+}
+
+/* Маленькие планшеты в портретной ориентации */
+@media (max-width: 600px) and (orientation: portrait) {
+  .mobile-menu {
+    width: 250px;
+    left: -250px;
+  }
+
+  .panel--orders,
+  .panel--processes {
+    max-height: 45vh;
+  }
+
+  .order-coating,
+  .order-quantity {
+    font-size: 0.7rem;
+  }
+}
+
+/* Маленький ноут */
+@media (min-width: 1024px) and (max-width: 1370px) and (orientation: landscape) {
+  .order-item {
+    padding: 4px;
+  }
+  .order-product {
+    min-width: 100%;
+    font-size: 0.75rem;
+  }
+  .order-header {
+    margin: 0;
+  }
+  .total-progress {
+    margin: 8px 0 0;
+    padding: 0;
+  }
+  .coating-progress {
+    margin: 0;
+  }
+  .panel-header {
+    padding: 0;
+  }
+  .orders-processes {
+    grid-template-columns: 1fr 2.5fr;
+    grid-template-rows: 1fr;
+  }
+
+  .panel--orders {
+    grid-row: 1;
+    max-height: 100%;
+  }
+
+  .panel--processes {
+    grid-row: 1;
+    max-height: 100%;
+  }
+
+  .mobile-controls {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Планшеты в ландшафтной ориентации */
+@media (min-width: 768px) and (max-width: 1024px) and (orientation: landscape) {
+  .order-item {
+    padding: 4px;
+  }
+  .order-product {
+    min-width: 100%;
+    font-size: 0.75rem;
+  }
+  .order-header {
+    margin: 0;
+  }
+  .total-progress {
+    margin: 8px 0 0;
+    padding: 0;
+  }
+  .coating-progress {
+    margin: 0;
+  }
+  .panel-header {
+    padding: 0;
+  }
+  .orders-processes {
+    grid-template-columns: 1fr 2.5fr;
+    grid-template-rows: 1fr;
+  }
+
+  .panel--orders {
+    grid-row: 1;
+    max-height: 100%;
+  }
+
+  .panel--processes {
+    grid-row: 1;
+    max-height: 100%;
+  }
+
+  .mobile-controls {
+    grid-column: 1 / -1;
+  }
 }
 </style>

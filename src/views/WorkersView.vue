@@ -332,7 +332,7 @@ onMounted(() => {
       </div>
 
       <!-- Форма добавления/редактирования пользователя -->
-      <div v-if="showAddForm" class="form-overlay" @click.self="closeForm">
+      <div v-if="showAddForm" class="form-overlay">
         <div class="form-modal">
           <h3>{{ editingUser ? 'Редактировать сотрудника' : 'Добавить сотрудника' }}</h3>
 

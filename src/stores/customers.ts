@@ -2,6 +2,8 @@ import { defineStore } from 'pinia'
 // import { ofetch } from 'ofetch'
 import api from '@/plugins/ofetch'
 
+import { useNotificationsStore } from '@/stores/notifications'
+
 // Типы данных
 export interface Customer {
   id: number
@@ -59,13 +61,14 @@ export const useCustomersStore = defineStore('customers', {
     },
 
     async addCustomer(customerData: Omit<Customer, 'id'>): Promise<Customer> {
+      const notifications = useNotificationsStore()
       try {
         // Используем api плагин - заголовки добавятся автоматически
         const newCustomer = await api<Customer>('/customers/', {
           method: 'POST',
           body: customerData,
         })
-
+        notifications.success('Заказчик успешно добавлен')
         this.customers.push(newCustomer)
         return newCustomer
       } catch (err) {
@@ -78,6 +81,7 @@ export const useCustomersStore = defineStore('customers', {
     },
 
     async updateCustomer(id: number, updatedData: Partial<Customer>): Promise<Customer> {
+      const notifications = useNotificationsStore()
       try {
         const updatedCustomer = await api(`/customers/${id}/`, {
           method: 'PATCH',
@@ -88,7 +92,7 @@ export const useCustomersStore = defineStore('customers', {
         if (index !== -1) {
           this.customers[index] = { ...this.customers[index], ...updatedCustomer }
         }
-
+        notifications.success('Заказчик успешно сохранен')
         // Обновляем currentCustomer если он редактируется
         if (this.currentCustomer?.id === id) {
           this.currentCustomer = { ...this.currentCustomer, ...updatedCustomer }
